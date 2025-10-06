@@ -26,7 +26,7 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
 
-  const navigation = [
+  const navigation: { name: string; icon: any; tab: TabType }[] = [
     { name: 'Dashboard', icon: Briefcase, tab: 'dashboard' },
     { name: 'Resume Analysis', icon: FileText, tab: 'resume' },
     { name: 'Interview Simulator', icon: Video, tab: 'interview' },
