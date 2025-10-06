@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAuth } from './AuthProvider'
+import { TabType } from '../types/tabs'
 import { 
   Briefcase, 
   FileText, 
@@ -15,8 +16,8 @@ import {
 } from 'lucide-react'
 
 interface NavigationProps {
-  activeTab: string
-  onTabChange: (tab: string) => void
+  activeTab: TabType
+  onTabChange: (tab: TabType) => void
   user: any
 }
 

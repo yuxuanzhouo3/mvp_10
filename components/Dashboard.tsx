@@ -8,8 +8,9 @@ import { ResumeAnalysis } from './ResumeAnalysis'
 import { InterviewSimulator } from './InterviewSimulator'
 import { Analytics } from './Analytics'
 import { Settings } from './Settings'
+import { TabType } from '../types/tabs'
 
-type TabType = 'dashboard' | 'resume' | 'interview' | 'analytics' | 'settings'
+ 
 
 export function Dashboard() {
   const { user } = useAuth()
