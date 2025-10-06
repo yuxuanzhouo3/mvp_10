@@ -38,7 +38,8 @@ const mockJobs: Job[] = [
     matchScore: 95,
     matchReasons: ['NLP experience matches', 'Python expertise', 'ML project portfolio'],
     postedDate: '2 days ago',
-    skills: ['Python', 'TensorFlow', 'NLP', 'ML', 'AWS']
+    skills: ['Python', 'TensorFlow', 'NLP', 'ML', 'AWS'],
+    description: 'Lead the design and deployment of large-scale ML systems, collaborating with cross-functional teams to build state-of-the-art NLP and recommendation features.'
   },
   {
     id: '2',
@@ -50,7 +51,8 @@ const mockJobs: Job[] = [
     matchScore: 88,
     matchReasons: ['Statistical analysis skills', 'Recommendation systems experience'],
     postedDate: '1 day ago',
-    skills: ['Python', 'R', 'SQL', 'Statistics', 'A/B Testing']
+    skills: ['Python', 'R', 'SQL', 'Statistics', 'A/B Testing'],
+    description: 'Analyze product experiments and user behavior to inform content strategy and personalize experiences using advanced statistical modeling and causal inference.'
   },
   {
     id: '3',
@@ -62,7 +64,8 @@ const mockJobs: Job[] = [
     matchScore: 92,
     matchReasons: ['Research background', 'Deep learning expertise'],
     postedDate: '3 days ago',
-    skills: ['PyTorch', 'Research', 'Deep Learning', 'Python', 'Papers']
+    skills: ['PyTorch', 'Research', 'Deep Learning', 'Python', 'Papers'],
+    description: 'Prototype and productionize cutting-edge deep learning models, collaborate on research papers, and translate findings into robust, user-facing capabilities.'
   }
 ]
 
