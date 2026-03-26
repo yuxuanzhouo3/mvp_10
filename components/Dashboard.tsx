@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAuth } from './AuthProvider'
 import { Navigation } from './Navigation'
 import { JobRecommendations } from './JobRecommendations'
+import { OperationsCenter } from './OperationsCenter'
 import { ResumeAnalysis } from './ResumeAnalysis'
 import { InterviewSimulator } from './InterviewSimulator'
 import { Analytics } from './Analytics'
@@ -22,6 +23,8 @@ export function Dashboard() {
         return <JobRecommendations />
       case 'resume':
         return <ResumeAnalysis />
+      case 'operations':
+        return <OperationsCenter />
       case 'interview':
         return <InterviewSimulator />
       case 'analytics':

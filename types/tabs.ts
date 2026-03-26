@@ -1,3 +1,9 @@
-export type TabType = 'dashboard' | 'resume' | 'interview' | 'analytics' | 'settings'
+export type TabType =
+  | 'dashboard'
+  | 'resume'
+  | 'operations'
+  | 'interview'
+  | 'analytics'
+  | 'settings'
 
 

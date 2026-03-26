@@ -5,6 +5,7 @@ import { useAuth } from './AuthProvider'
 import { TabType } from '../types/tabs'
 import { 
   Briefcase, 
+  Building2,
   FileText, 
   Video, 
   BarChart3, 
@@ -29,7 +30,8 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
   const navigation: { name: string; icon: any; tab: TabType }[] = [
     { name: 'Dashboard', icon: Briefcase, tab: 'dashboard' },
     { name: 'Resume Analysis', icon: FileText, tab: 'resume' },
-    { name: 'Interview Simulator', icon: Video, tab: 'interview' },
+    { name: 'Operations', icon: Building2, tab: 'operations' },
+    { name: 'Assessment Studio', icon: Video, tab: 'interview' },
     { name: 'Analytics', icon: BarChart3, tab: 'analytics' },
     { name: 'Settings', icon: Settings, tab: 'settings' },
   ]
