@@ -14,12 +14,12 @@ export async function POST(
   const record = await getResumeRecordById(params.id)
 
   if (!record) {
-    return NextResponse.json({ error: 'Resume record not found.' }, { status: 404 })
+    return NextResponse.json({ error: '未找到对应的简历记录。' }, { status: 404 })
   }
 
   if (!record.contact.email) {
     return NextResponse.json(
-      { error: 'Candidate email is required before sending a receipt.' },
+      { error: '发送回执前需要先填写候选人邮箱。' },
       { status: 400 }
     )
   }
@@ -34,7 +34,7 @@ export async function POST(
         outreachStatus: delivery.mode === 'smtp' ? 'contacted' : current.workflow.outreachStatus,
         recommendedNextAction:
           delivery.mode === 'smtp'
-            ? 'Wait for candidate reply, then arrange screening, WeChat, or Feishu interview follow-up.'
+            ? '等待候选人回复后，再安排筛选沟通、微信或飞书跟进。'
             : current.workflow.recommendedNextAction,
         lastUpdatedAt: attemptedAt,
       }
@@ -60,11 +60,11 @@ export async function POST(
           createTimelineEvent({
             type: 'receipt_sent',
             actor: 'system',
-            title: delivery.mode === 'smtp' ? 'Candidate receipt email sent' : 'Candidate receipt email preview generated',
+            title: delivery.mode === 'smtp' ? '候选人回执邮件已发送' : '候选人回执邮件预览稿已生成',
             description:
               delivery.mode === 'smtp'
-                ? 'The platform sent the candidate an acknowledgement email.'
-                : 'SMTP is not configured, so a preview was generated for manual outreach.',
+                ? '系统已向候选人发送简历回执邮件。'
+                : '当前未配置 SMTP，因此已生成预览稿，需手动发送。',
             createdAt: attemptedAt,
           }),
         ],
@@ -76,7 +76,7 @@ export async function POST(
       delivery,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Receipt email failed.'
+    const message = error instanceof Error ? error.message : '回执邮件发送失败。'
 
     const updatedRecord = await updateResumeRecord(params.id, (current) => {
       const communication = {
@@ -99,7 +99,7 @@ export async function POST(
           createTimelineEvent({
             type: 'receipt_failed',
             actor: 'system',
-            title: 'Candidate receipt delivery failed',
+            title: '候选人回执邮件发送失败',
             description: message,
             createdAt: attemptedAt,
           }),

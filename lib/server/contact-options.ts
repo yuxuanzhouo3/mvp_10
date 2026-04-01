@@ -45,7 +45,7 @@ export function buildContactOptionTextLines() {
   }
 
   return [
-    'If you prefer a faster response, you can also reach us through these opt-in channels:',
+    '如果你希望更快获得回复，也可以通过以下自愿联系渠道和我们沟通：',
     ...options.map((option) => `- ${option.label}: ${option.value}`),
   ]
 }
@@ -60,7 +60,7 @@ export function buildContactOptionHtml(options = getRecruitingContactOptions()) 
     .join('')
 
   return `
-    <p>If you prefer a faster response, you can also reach us through these opt-in channels:</p>
+    <p>如果你希望更快获得回复，也可以通过以下自愿联系渠道和我们沟通：</p>
     <ul>${listItems}</ul>
   `.trim()
 }

@@ -22,38 +22,38 @@ function escapeHtml(value: string) {
 }
 
 function buildInterviewInviteContent(record: ResumeRecord) {
-  const platformName = process.env.PLATFORM_NAME || 'JobSearch Platform'
+  const platformName = process.env.PLATFORM_NAME || '招聘平台'
   const schedulerUrl = process.env.INTERVIEW_SCHEDULING_URL
   const supportEmail = process.env.RECRUITING_SUPPORT_EMAIL || process.env.SMTP_FROM || 'recruiting@example.com'
-  const candidateName = record.contact.name || 'there'
-  const subject = `${platformName}: Interview invitation`
+  const candidateName = record.contact.name || '同学'
+  const subject = `${platformName}：面试邀请`
 
   const lines = [
-    `Hi ${candidateName},`,
+    `${candidateName}，你好：`,
     '',
-    `Thanks again for your interest in ${platformName}. We would like to invite you to the next interview step.`,
+    `感谢你对 ${platformName} 的关注，我们希望邀请你进入下一轮面试沟通。`,
     '',
-    'Next step details:',
-    '- Please choose a time slot or reply with your availability.',
-    '- You can also add us on an opt-in chat channel if that is faster for you.',
-    '- If any contact detail has changed, just reply to this email and we will update your profile.',
+    '下一步安排如下：',
+    '- 请选择一个合适的时间段，或直接回复你的可用时间。',
+    '- 如果你更习惯即时沟通，也可以通过自愿联系渠道和我们对接。',
+    '- 如果你的联系方式有变化，直接回复这封邮件即可，我们会同步更新资料。',
   ]
 
   if (schedulerUrl) {
-    lines.push('', `Interview booking link: ${schedulerUrl}`)
+    lines.push('', `面试预约链接：${schedulerUrl}`)
   } else {
-    lines.push('', 'Reply to this email with a few available time slots and we will help coordinate the interview.')
+    lines.push('', '如果当前没有预约链接，也可以直接回复几个可选时间，我们会协助安排面试。')
   }
 
   lines.push(...buildContactOptionTextLines())
   lines.push(
     '',
-    'We will use your resume summary and assessment results to guide the conversation, so no need to resend your materials.',
+    '面试过程中我们会结合你的简历摘要和测评结果进行沟通，因此无需重复发送材料。',
     '',
-    `Questions? Reply to this email or contact ${supportEmail}.`,
+    `如有问题，欢迎直接回复这封邮件，或联系 ${supportEmail}。`,
     '',
-    'Best regards,',
-    `${platformName} Recruiting`
+    '此致',
+    `${platformName} 招聘团队`
   )
 
   const text = lines.join('\n')
@@ -84,7 +84,7 @@ function buildInterviewInviteContent(record: ResumeRecord) {
 
 export async function sendInterviewInviteEmail(record: ResumeRecord): Promise<InterviewInviteDeliveryResult> {
   if (!record.contact.email) {
-    throw new Error('Candidate email is required before sending an interview invite.')
+    throw new Error('发送面试邀请前需要先填写候选人邮箱。')
   }
 
   const { subject, text, html } = buildInterviewInviteContent(record)
@@ -101,7 +101,7 @@ export async function sendInterviewInviteEmail(record: ResumeRecord): Promise<In
       subject,
       text,
       html,
-      message: 'SMTP is not configured yet. An interview invite draft was generated but not sent.',
+      message: '当前未配置 SMTP，已生成面试邀请预览稿，但尚未真正发送。',
     }
   }
 
@@ -126,7 +126,7 @@ export async function sendInterviewInviteEmail(record: ResumeRecord): Promise<In
     subject,
     text,
     html,
-    message: 'Interview invite email sent successfully.',
+    message: '面试邀请发送成功。',
     messageId: info.messageId,
   }
 }

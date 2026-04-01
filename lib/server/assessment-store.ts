@@ -1,41 +1,26 @@
-import { promises as fs } from 'fs'
 import path from 'path'
 
+import {
+  getCloudDocumentById,
+  listCloudDocuments,
+  putCloudDocument,
+  readLocalJsonFile,
+  withCloudBaseFallback,
+  writeLocalJsonFile,
+} from '@/lib/server/cloudbase'
 import type { AssessmentAudioAsset, AssessmentAnswer, AssessmentRecord } from '@/types/assessment'
 
 const DATA_DIR = path.join(process.cwd(), 'data', 'assessments')
 const INDEX_FILE = path.join(DATA_DIR, 'index.json')
-const FILES_DIR = path.join(DATA_DIR, 'files')
-
-async function ensureStore() {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-}
-
-async function ensureFilesStore() {
-  await fs.mkdir(FILES_DIR, { recursive: true })
-}
-
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const content = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(content) as T
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return fallback
-    }
-
-    throw error
-  }
-}
-
-async function writeJsonFile(filePath: string, value: unknown) {
-  await ensureStore()
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-}
+const ASSESSMENTS_COLLECTION = 'assessments'
 
 async function readAssessmentRecords() {
-  const records = await readJsonFile<AssessmentRecord[]>(INDEX_FILE, [])
+  const records = await readLocalJsonFile<AssessmentRecord[]>(INDEX_FILE, [])
   return records.map(normalizeAssessmentRecord)
+}
+
+async function writeAssessmentRecords(records: AssessmentRecord[]) {
+  await writeLocalJsonFile(INDEX_FILE, records)
 }
 
 function defaultAudioAsset(): AssessmentAudioAsset {
@@ -73,59 +58,79 @@ function normalizeAssessmentRecord(record: AssessmentRecord): AssessmentRecord {
   }
 }
 
+function sortAssessmentRecords(records: AssessmentRecord[]) {
+  return [...records].sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+}
+
 export async function listAssessmentRecords() {
-  const records = await readAssessmentRecords()
-  return records.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+  return withCloudBaseFallback(
+    'listAssessmentRecords',
+    async () =>
+      sortAssessmentRecords(
+        (await listCloudDocuments<AssessmentRecord>(ASSESSMENTS_COLLECTION)).map(normalizeAssessmentRecord)
+      ),
+    async () => sortAssessmentRecords(await readAssessmentRecords())
+  )
 }
 
 export async function addAssessmentRecord(record: AssessmentRecord) {
-  const records = await listAssessmentRecords()
-  records.unshift(normalizeAssessmentRecord(record))
-  await writeJsonFile(INDEX_FILE, records)
+  const normalizedRecord = normalizeAssessmentRecord(record)
+
+  await withCloudBaseFallback(
+    'addAssessmentRecord',
+    async () => {
+      await putCloudDocument(ASSESSMENTS_COLLECTION, normalizedRecord.id, normalizedRecord)
+    },
+    async () => {
+      const records = sortAssessmentRecords(await readAssessmentRecords())
+      records.unshift(normalizedRecord)
+      await writeAssessmentRecords(records)
+    }
+  )
 }
 
 export async function getAssessmentRecordById(id: string) {
-  const records = await readAssessmentRecords()
-  return records.find((record) => record.id === id) ?? null
+  return withCloudBaseFallback(
+    'getAssessmentRecordById',
+    async () => {
+      const record = await getCloudDocumentById<AssessmentRecord>(ASSESSMENTS_COLLECTION, id)
+      return record ? normalizeAssessmentRecord(record) : null
+    },
+    async () => {
+      const records = await readAssessmentRecords()
+      return records.find((record) => record.id === id) ?? null
+    }
+  )
 }
 
 export async function updateAssessmentRecord(
   id: string,
   updater: (record: AssessmentRecord) => AssessmentRecord
 ) {
-  const records = await readAssessmentRecords()
-  const index = records.findIndex((record) => record.id === id)
+  return withCloudBaseFallback(
+    'updateAssessmentRecord',
+    async () => {
+      const existing = await getCloudDocumentById<AssessmentRecord>(ASSESSMENTS_COLLECTION, id)
 
-  if (index === -1) {
-    return null
-  }
+      if (!existing) {
+        return null
+      }
 
-  records[index] = normalizeAssessmentRecord(updater(records[index]))
-  await writeJsonFile(INDEX_FILE, records)
-  return records[index]
-}
+      const nextRecord = normalizeAssessmentRecord(updater(normalizeAssessmentRecord(existing)))
+      await putCloudDocument(ASSESSMENTS_COLLECTION, id, nextRecord)
+      return nextRecord
+    },
+    async () => {
+      const records = await readAssessmentRecords()
+      const index = records.findIndex((record) => record.id === id)
 
-function sanitizeFilePart(value: string) {
-  return value.replace(/[^a-zA-Z0-9._-]/g, '-')
-}
+      if (index === -1) {
+        return null
+      }
 
-export async function saveAssessmentAudioFile(
-  assessmentId: string,
-  questionId: string,
-  fileName: string,
-  buffer: Buffer
-) {
-  await ensureFilesStore()
-
-  const storedFileName = `${sanitizeFilePart(assessmentId)}-${sanitizeFilePart(questionId)}-${Date.now()}-${sanitizeFilePart(
-    fileName || 'audio.webm'
-  )}`
-  const absolutePath = path.join(FILES_DIR, storedFileName)
-
-  await fs.writeFile(absolutePath, buffer)
-
-  return {
-    absolutePath,
-    storedFileName,
-  }
+      records[index] = normalizeAssessmentRecord(updater(records[index]))
+      await writeAssessmentRecords(records)
+      return records[index]
+    }
+  )
 }

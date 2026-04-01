@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { authenticateUser, createSession } from '@/lib/server/auth-store'
+import { createAuthToken } from '@/lib/server/jwt'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,9 +25,11 @@ export async function POST(request: Request) {
 
     const session = await createSession(user.id)
 
+    const token = await createAuthToken(user.id, session.token)
+
     return NextResponse.json({
       user,
-      token: session.token,
+      token,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Login failed.'

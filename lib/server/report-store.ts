@@ -1,60 +1,84 @@
-import { promises as fs } from 'fs'
 import path from 'path'
 
+import {
+  getCloudDocumentById,
+  listCloudDocuments,
+  putCloudDocument,
+  readLocalJsonFile,
+  withCloudBaseFallback,
+  writeLocalJsonFile,
+} from '@/lib/server/cloudbase'
 import type { ModerationReport } from '@/types/report'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'reports')
-const INDEX_FILE = path.join(DATA_DIR, 'index.json')
+const INDEX_FILE = path.join(process.cwd(), 'data', 'reports', 'index.json')
+const REPORTS_COLLECTION = 'reports'
 
-async function ensureStore() {
-  await fs.mkdir(DATA_DIR, { recursive: true })
+async function readReports() {
+  return readLocalJsonFile<ModerationReport[]>(INDEX_FILE, [])
 }
 
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const content = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(content) as T
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return fallback
-    }
-
-    throw error
-  }
+async function writeReports(records: ModerationReport[]) {
+  await writeLocalJsonFile(INDEX_FILE, records)
 }
 
-async function writeJsonFile(filePath: string, value: unknown) {
-  await ensureStore()
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-}
-
-export async function listModerationReports() {
-  const records = await readJsonFile<ModerationReport[]>(INDEX_FILE, [])
-
-  return records.sort((left, right) => {
+function sortReports(records: ModerationReport[]) {
+  return [...records].sort((left, right) => {
     return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
   })
 }
 
+export async function listModerationReports() {
+  return withCloudBaseFallback(
+    'listModerationReports',
+    async () => sortReports(await listCloudDocuments<ModerationReport>(REPORTS_COLLECTION)),
+    async () => sortReports(await readReports())
+  )
+}
+
 export async function addModerationReport(record: ModerationReport) {
-  const records = await listModerationReports()
-  records.unshift(record)
-  await writeJsonFile(INDEX_FILE, records)
+  await withCloudBaseFallback(
+    'addModerationReport',
+    async () => {
+      await putCloudDocument(REPORTS_COLLECTION, record.id, record)
+    },
+    async () => {
+      const records = sortReports(await readReports())
+      records.unshift(record)
+      await writeReports(records)
+    }
+  )
 }
 
 export async function updateModerationReport(
   id: string,
   updater: (record: ModerationReport) => ModerationReport
 ) {
-  const records = await listModerationReports()
-  const index = records.findIndex((record) => record.id === id)
+  return withCloudBaseFallback(
+    'updateModerationReport',
+    async () => {
+      const existing = await getCloudDocumentById<ModerationReport>(REPORTS_COLLECTION, id)
 
-  if (index === -1) {
-    return null
-  }
+      if (!existing) {
+        return null
+      }
 
-  records[index] = updater(records[index])
-  await writeJsonFile(INDEX_FILE, records)
+      const nextRecord = updater(existing)
+      await putCloudDocument(REPORTS_COLLECTION, id, nextRecord)
 
-  return records[index]
+      return nextRecord
+    },
+    async () => {
+      const records = await readReports()
+      const index = records.findIndex((record) => record.id === id)
+
+      if (index === -1) {
+        return null
+      }
+
+      records[index] = updater(records[index])
+      await writeReports(records)
+
+      return records[index]
+    }
+  )
 }

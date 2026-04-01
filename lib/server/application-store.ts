@@ -1,80 +1,132 @@
-import { promises as fs } from 'fs'
 import path from 'path'
 
+import {
+  findCloudDocument,
+  getCloudDocumentById,
+  listCloudDocuments,
+  putCloudDocument,
+  readLocalJsonFile,
+  withCloudBaseFallback,
+  writeLocalJsonFile,
+} from '@/lib/server/cloudbase'
 import type { ApplicationRecord } from '@/types/application'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'applications')
-const INDEX_FILE = path.join(DATA_DIR, 'index.json')
-
-async function ensureStore() {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-}
-
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const content = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(content) as T
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return fallback
-    }
-
-    throw error
-  }
-}
-
-async function writeJsonFile(filePath: string, value: unknown) {
-  await ensureStore()
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-}
+const INDEX_FILE = path.join(process.cwd(), 'data', 'applications', 'index.json')
+const APPLICATIONS_COLLECTION = 'applications'
 
 async function readApplications() {
-  return readJsonFile<ApplicationRecord[]>(INDEX_FILE, [])
+  return readLocalJsonFile<ApplicationRecord[]>(INDEX_FILE, [])
+}
+
+async function writeApplications(records: ApplicationRecord[]) {
+  await writeLocalJsonFile(INDEX_FILE, records)
+}
+
+function sortApplications(records: ApplicationRecord[]) {
+  return [...records].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
 }
 
 export async function listApplications() {
-  const records = await readApplications()
-  return records.sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+  return withCloudBaseFallback(
+    'listApplications',
+    async () => sortApplications(await listCloudDocuments<ApplicationRecord>(APPLICATIONS_COLLECTION)),
+    async () => sortApplications(await readApplications())
+  )
 }
 
 export async function listApplicationsByUserId(userId: string) {
-  const records = await listApplications()
-  return records.filter((record) => record.userId === userId)
+  return withCloudBaseFallback(
+    'listApplicationsByUserId',
+    async () =>
+      sortApplications(
+        await listCloudDocuments<ApplicationRecord>(APPLICATIONS_COLLECTION, {
+          where: { userId },
+        })
+      ),
+    async () => sortApplications(await readApplications()).filter((record) => record.userId === userId)
+  )
 }
 
 export async function listApplicationsByJobId(jobId: string) {
-  const records = await listApplications()
-  return records.filter((record) => record.jobId === jobId)
+  return withCloudBaseFallback(
+    'listApplicationsByJobId',
+    async () =>
+      sortApplications(
+        await listCloudDocuments<ApplicationRecord>(APPLICATIONS_COLLECTION, {
+          where: { jobId },
+        })
+      ),
+    async () => sortApplications(await readApplications()).filter((record) => record.jobId === jobId)
+  )
 }
 
 export async function addApplication(record: ApplicationRecord) {
-  const records = await listApplications()
-  records.unshift(record)
-  await writeJsonFile(INDEX_FILE, records)
+  await withCloudBaseFallback(
+    'addApplication',
+    async () => {
+      await putCloudDocument(APPLICATIONS_COLLECTION, record.id, record)
+    },
+    async () => {
+      const records = sortApplications(await readApplications())
+      records.unshift(record)
+      await writeApplications(records)
+    }
+  )
 }
 
 export async function getApplicationById(id: string) {
-  const records = await readApplications()
-  return records.find((record) => record.id === id) ?? null
+  return withCloudBaseFallback(
+    'getApplicationById',
+    async () => getCloudDocumentById<ApplicationRecord>(APPLICATIONS_COLLECTION, id),
+    async () => {
+      const records = await readApplications()
+      return records.find((record) => record.id === id) ?? null
+    }
+  )
 }
 
 export async function findApplicationByUserAndJob(userId: string, jobId: string) {
-  const records = await readApplications()
-  return records.find((record) => record.userId === userId && record.jobId === jobId) ?? null
+  return withCloudBaseFallback(
+    'findApplicationByUserAndJob',
+    async () =>
+      findCloudDocument<ApplicationRecord>(APPLICATIONS_COLLECTION, {
+        where: { userId, jobId },
+      }),
+    async () => {
+      const records = await readApplications()
+      return records.find((record) => record.userId === userId && record.jobId === jobId) ?? null
+    }
+  )
 }
 
 export async function updateApplication(
   id: string,
   updater: (record: ApplicationRecord) => ApplicationRecord
 ) {
-  const records = await readApplications()
-  const index = records.findIndex((record) => record.id === id)
+  return withCloudBaseFallback(
+    'updateApplication',
+    async () => {
+      const existing = await getCloudDocumentById<ApplicationRecord>(APPLICATIONS_COLLECTION, id)
 
-  if (index === -1) {
-    return null
-  }
+      if (!existing) {
+        return null
+      }
 
-  records[index] = updater(records[index])
-  await writeJsonFile(INDEX_FILE, records)
-  return records[index]
+      const nextRecord = updater(existing)
+      await putCloudDocument(APPLICATIONS_COLLECTION, id, nextRecord)
+      return nextRecord
+    },
+    async () => {
+      const records = await readApplications()
+      const index = records.findIndex((record) => record.id === id)
+
+      if (index === -1) {
+        return null
+      }
+
+      records[index] = updater(records[index])
+      await writeApplications(records)
+      return records[index]
+    }
+  )
 }

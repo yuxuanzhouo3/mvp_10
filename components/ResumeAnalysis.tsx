@@ -42,41 +42,41 @@ import type {
 } from '@/types/resume'
 
 const STAGE_OPTIONS: { value: CandidateStage; label: string }[] = [
-  { value: 'new', label: 'New' },
-  { value: 'screening', label: 'Screening' },
-  { value: 'interview', label: 'Interview' },
-  { value: 'offer', label: 'Offer' },
-  { value: 'hired', label: 'Hired' },
-  { value: 'rejected', label: 'Rejected' },
+  { value: 'new', label: '新候选人' },
+  { value: 'screening', label: '筛选中' },
+  { value: 'interview', label: '面试中' },
+  { value: 'offer', label: 'Offer 阶段' },
+  { value: 'hired', label: '已录用' },
+  { value: 'rejected', label: '未通过' },
 ]
 
 const REVIEW_OPTIONS: { value: CandidateReviewStatus; label: string }[] = [
-  { value: 'pending', label: 'Pending Review' },
-  { value: 'reviewed', label: 'Reviewed' },
+  { value: 'pending', label: '待评审' },
+  { value: 'reviewed', label: '已评审' },
 ]
 
 const OUTREACH_OPTIONS: { value: CandidateOutreachStatus; label: string }[] = [
-  { value: 'pending', label: 'Pending Contact' },
-  { value: 'ready', label: 'Ready to Contact' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'responded', label: 'Responded' },
+  { value: 'pending', label: '待联系' },
+  { value: 'ready', label: '可联系' },
+  { value: 'contacted', label: '已联系' },
+  { value: 'responded', label: '已回复' },
 ]
 
 const TASK_STATUS_OPTIONS: { value: CandidateTaskStatus; label: string }[] = [
-  { value: 'todo', label: 'Todo' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'done', label: 'Done' },
-  { value: 'blocked', label: 'Blocked' },
+  { value: 'todo', label: '待处理' },
+  { value: 'in_progress', label: '进行中' },
+  { value: 'done', label: '已完成' },
+  { value: 'blocked', label: '受阻' },
 ]
 
 const TASK_CHANNEL_OPTIONS: { value: CandidateTaskChannel; label: string }[] = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'email', label: 'Email' },
-  { value: 'phone', label: 'Phone' },
+  { value: 'manual', label: '手动' },
+  { value: 'email', label: '邮件' },
+  { value: 'phone', label: '电话' },
   { value: 'wechat', label: 'WeChat' },
   { value: 'feishu', label: 'Feishu' },
   { value: 'linkedin', label: 'LinkedIn' },
-  { value: 'assessment', label: 'Assessment' },
+  { value: 'assessment', label: '测评' },
 ]
 
 function toListItem(record: ResumeRecord): ResumeListItem {
@@ -114,6 +114,35 @@ function getPriorityColor(priority: ResumeInsight['priority']) {
     default:
       return 'text-gray-600 bg-gray-100'
   }
+}
+
+function getPriorityLabel(priority: ResumeInsight['priority']) {
+  switch (priority) {
+    case 'high':
+      return '高优先级'
+    case 'medium':
+      return '中优先级'
+    case 'low':
+      return '低优先级'
+    default:
+      return priority
+  }
+}
+
+function getStageLabel(stage: CandidateStage) {
+  return STAGE_OPTIONS.find((option) => option.value === stage)?.label ?? stage
+}
+
+function getReviewStatusLabel(status: CandidateReviewStatus) {
+  return REVIEW_OPTIONS.find((option) => option.value === status)?.label ?? status
+}
+
+function getOutreachStatusLabel(status: CandidateOutreachStatus) {
+  return OUTREACH_OPTIONS.find((option) => option.value === status)?.label ?? status
+}
+
+function getTaskStatusLabel(status: CandidateTaskStatus) {
+  return TASK_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status
 }
 
 function getInsightIcon(type: ResumeInsight['type']) {
@@ -165,18 +194,18 @@ function getTaskStatusColor(status: CandidateTaskStatus) {
 function getTaskKindLabel(kind: CandidateTaskKind) {
   switch (kind) {
     case 'contact_verification':
-      return 'Contact'
+      return '联系方式核验'
     case 'first_outreach':
-      return 'Outreach'
+      return '首次触达'
     case 'screening_decision':
-      return 'Screening'
+      return '筛选决策'
     case 'interview':
-      return 'Interview'
+      return '面试推进'
     case 'offer':
-      return 'Offer'
+      return 'Offer 跟进'
     case 'custom':
     default:
-      return 'Custom'
+      return '自定义'
   }
 }
 
@@ -221,6 +250,48 @@ function getDeliveryStatusColor(status: 'not_sent' | 'preview' | 'sent' | 'faile
   }
 }
 
+function getDeliveryStatusLabel(status: 'not_sent' | 'preview' | 'sent' | 'failed') {
+  switch (status) {
+    case 'sent':
+      return '已发送'
+    case 'preview':
+      return '预览稿'
+    case 'failed':
+      return '发送失败'
+    case 'not_sent':
+    default:
+      return '未发送'
+  }
+}
+
+function getTimelineActorLabel(actor: CandidateTimelineEvent['actor']) {
+  switch (actor) {
+    case 'system':
+      return '系统'
+    case 'recruiter':
+      return '招聘方'
+    case 'candidate':
+      return '候选人'
+    default:
+      return actor
+  }
+}
+
+function getCompositionLabel(name: string) {
+  switch (name) {
+    case 'Technical Skills':
+      return '技术技能'
+    case 'Experience':
+      return '经验经历'
+    case 'Education':
+      return '教育背景'
+    case 'Projects':
+      return '项目实践'
+    default:
+      return name
+  }
+}
+
 function toDateTimeInputValue(value: string | null) {
   if (!value) {
     return ''
@@ -243,6 +314,23 @@ function fromDateTimeInputValue(value: string) {
 
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+function ProtectedTechnicalText({
+  value,
+  fallback = '暂无',
+}: {
+  value: string | null | undefined
+  fallback?: string
+}) {
+  const text = typeof value === 'string' && value.trim() ? value.trim() : fallback
+  const lang = /[A-Za-z]/.test(text) ? 'en' : undefined
+
+  return (
+    <span className="notranslate" translate="no" lang={lang}>
+      {text}
+    </span>
+  )
 }
 
 function buildEmptyTask(): CandidateTask {
@@ -330,6 +418,33 @@ export function ResumeAnalysis() {
     })
   }, [activeResume])
 
+  const marketDemandSummary = useMemo(() => {
+    const skills = activeResume?.skillAnalysis ?? []
+
+    if (skills.length === 0) {
+      return null
+    }
+
+    const highestDemand = [...skills].sort((left, right) => right.demand - left.demand)[0] ?? null
+    const bestFit = [...skills].sort(
+      (left, right) => right.match + right.demand + right.level - (left.match + left.demand + left.level)
+    )[0] ?? null
+    const upskillPriority = [...skills].sort(
+      (left, right) => right.demand - right.level - (left.demand - left.level)
+    )[0] ?? null
+    const averageDemand = Math.round(skills.reduce((sum, skill) => sum + skill.demand, 0) / skills.length)
+    const marketReadySkills = skills.filter((skill) => skill.match >= 75 && skill.demand >= 70).length
+
+    return {
+      averageDemand,
+      highestDemand,
+      bestFit,
+      upskillPriority,
+      marketReadySkills,
+      demandRanking: [...skills].sort((left, right) => right.demand - left.demand).slice(0, 4),
+    }
+  }, [activeResume])
+
   function applyRecordUpdate(record: ResumeRecord) {
     setShowFullText(false)
     setReceiptFeedback('')
@@ -348,7 +463,7 @@ export function ResumeAnalysis() {
       const data = (await response.json()) as ResumeListItem[]
 
       if (!response.ok) {
-        throw new Error('Failed to load resume history.')
+        throw new Error('加载简历历史失败。')
       }
 
       setRecentResumes(data)
@@ -361,7 +476,7 @@ export function ResumeAnalysis() {
       }
     } catch (fetchError) {
       console.error(fetchError)
-      setError(fetchError instanceof Error ? fetchError.message : 'Failed to load resume history.')
+      setError(fetchError instanceof Error ? fetchError.message : '加载简历历史失败。')
     } finally {
       setLoadingHistory(false)
     }
@@ -376,13 +491,13 @@ export function ResumeAnalysis() {
       const data = (await response.json()) as ResumeRecord | { error?: string }
 
       if (!response.ok || !('id' in data)) {
-        throw new Error('error' in data && data.error ? data.error : 'Failed to load resume detail.')
+        throw new Error('error' in data && data.error ? data.error : '加载简历详情失败。')
       }
 
       setActiveResume(data)
       setShowFullText(false)
     } catch (detailError) {
-      setError(detailError instanceof Error ? detailError.message : 'Failed to load resume detail.')
+      setError(detailError instanceof Error ? detailError.message : '加载简历详情失败。')
     } finally {
       setLoadingDetail(false)
     }
@@ -411,12 +526,12 @@ export function ResumeAnalysis() {
       const data = (await response.json()) as ResumeRecord | { error?: string }
 
       if (!response.ok || !('id' in data)) {
-        throw new Error('error' in data && data.error ? data.error : 'Resume upload failed.')
+        throw new Error('error' in data && data.error ? data.error : '简历上传失败。')
       }
 
-      await loadRecentResumes(data.id)
+      applyRecordUpdate(data)
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Resume upload failed.')
+      setError(uploadError instanceof Error ? uploadError.message : '简历上传失败。')
     } finally {
       setLoading(false)
       event.target.value = ''
@@ -510,12 +625,12 @@ export function ResumeAnalysis() {
       const data = (await response.json()) as ResumeRecord | { error?: string }
 
       if (!response.ok || !('id' in data)) {
-        throw new Error('error' in data && data.error ? data.error : 'Failed to save contact info.')
+        throw new Error('error' in data && data.error ? data.error : '保存联系信息失败。')
       }
 
       applyRecordUpdate(data)
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save contact info.')
+      setError(saveError instanceof Error ? saveError.message : '保存联系信息失败。')
     } finally {
       setSavingContact(false)
     }
@@ -547,12 +662,12 @@ export function ResumeAnalysis() {
       const data = (await response.json()) as ResumeRecord | { error?: string }
 
       if (!response.ok || !('id' in data)) {
-        throw new Error('error' in data && data.error ? data.error : 'Failed to save workflow.')
+        throw new Error('error' in data && data.error ? data.error : '保存流程信息失败。')
       }
 
       applyRecordUpdate(data)
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save workflow.')
+      setError(saveError instanceof Error ? saveError.message : '保存流程信息失败。')
     } finally {
       setSavingWorkflow(false)
     }
@@ -580,12 +695,12 @@ export function ResumeAnalysis() {
       const data = (await response.json()) as ResumeRecord | { error?: string }
 
       if (!response.ok || !('id' in data)) {
-        throw new Error('error' in data && data.error ? data.error : 'Failed to save task board.')
+        throw new Error('error' in data && data.error ? data.error : '保存任务看板失败。')
       }
 
       applyRecordUpdate(data)
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save task board.')
+      setError(saveError instanceof Error ? saveError.message : '保存任务看板失败。')
     } finally {
       setSavingTasks(false)
     }
@@ -622,7 +737,7 @@ export function ResumeAnalysis() {
           applyRecordUpdate(data.record)
         }
 
-        throw new Error('error' in data && data.error ? data.error : 'Failed to send receipt email.')
+        throw new Error('error' in data && data.error ? data.error : '发送回执邮件失败。')
       }
 
       if ('record' in data && data.record && 'id' in data.record) {
@@ -632,12 +747,12 @@ export function ResumeAnalysis() {
       if ('delivery' in data && data.delivery) {
         setReceiptFeedback(
           data.delivery.mode === 'preview'
-            ? `${data.delivery.message} Preview: ${data.delivery.text}`
+            ? `${data.delivery.message}\n\n预览正文：\n${data.delivery.text}`
             : data.delivery.message
         )
       }
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : 'Failed to send receipt email.')
+      setError(sendError instanceof Error ? sendError.message : '发送回执邮件失败。')
     } finally {
       setSendingReceipt(false)
     }
@@ -674,7 +789,7 @@ export function ResumeAnalysis() {
           applyRecordUpdate(data.record)
         }
 
-        throw new Error('error' in data && data.error ? data.error : 'Failed to send interview invite.')
+        throw new Error('error' in data && data.error ? data.error : '发送面试邀请失败。')
       }
 
       if ('record' in data && data.record && 'id' in data.record) {
@@ -684,12 +799,12 @@ export function ResumeAnalysis() {
       if ('delivery' in data && data.delivery) {
         setInterviewInviteFeedback(
           data.delivery.mode === 'preview'
-            ? `${data.delivery.message} Preview: ${data.delivery.text}`
+            ? `${data.delivery.message}\n\n预览正文：\n${data.delivery.text}`
             : data.delivery.message
         )
       }
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : 'Failed to send interview invite.')
+      setError(sendError instanceof Error ? sendError.message : '发送面试邀请失败。')
     } finally {
       setSendingInterviewInvite(false)
     }
@@ -712,14 +827,14 @@ export function ResumeAnalysis() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Candidate Intake Desk</h1>
+          <h1 className="text-3xl font-bold text-gray-900">简历分析</h1>
           <p className="text-gray-600 mt-2">
-            Upload resumes, store candidates, review AI summaries, and move each person through your intake workflow.
+            上传简历后即可查看候选人画像、技能拆解、市场需求分析与后续跟进建议。
           </p>
         </div>
         <div className="mt-4 md:mt-0 flex items-center space-x-2">
           <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-            {activeResume?.source === 'openai' ? 'OpenAI analysis' : 'Heuristic analysis'}
+            {activeResume?.source === 'openai' ? 'OpenAI 分析' : '规则分析'}
           </span>
           <button
             onClick={() => void loadRecentResumes()}
@@ -727,26 +842,26 @@ export function ResumeAnalysis() {
             disabled={loadingHistory}
           >
             <RefreshCw className={`h-4 w-4 ${loadingHistory ? 'animate-spin' : ''}`} />
-            <span>Refresh Queue</span>
+            <span>刷新队列</span>
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="card">
-          <p className="text-sm text-gray-500">Candidates</p>
+          <p className="text-sm text-gray-500">候选人数</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{queueStats.total}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-gray-500">Ready to Contact</p>
+          <p className="text-sm text-gray-500">待联系</p>
           <p className="text-2xl font-bold text-blue-700 mt-1">{queueStats.readyToContact}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-gray-500">Interviewing</p>
+          <p className="text-sm text-gray-500">面试中</p>
           <p className="text-2xl font-bold text-violet-700 mt-1">{queueStats.interviewing}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-gray-500">Offers</p>
+          <p className="text-sm text-gray-500">Offer 阶段</p>
           <p className="text-2xl font-bold text-amber-700 mt-1">{queueStats.offers}</p>
         </div>
       </div>
@@ -757,9 +872,9 @@ export function ResumeAnalysis() {
             <div className="text-center">
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8">
                 <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Upload candidate resume</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">上传候选人简历</h3>
                 <p className="text-gray-600 mb-4">
-                  Supported formats: PDF, DOCX, TXT, MD. New resumes are stored locally and added to the candidate queue.
+                  支持 `PDF`、`DOCX`、`TXT`、`MD`。新上传的简历会保存在本地，并加入候选人队列。
                 </p>
                 <label className="btn-primary cursor-pointer inline-flex items-center space-x-2">
                   <input
@@ -770,11 +885,11 @@ export function ResumeAnalysis() {
                     disabled={loading}
                   />
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  <span>{loading ? 'Uploading and analyzing...' : 'Choose Resume'}</span>
+                  <span>{loading ? '上传并分析中...' : '选择简历文件'}</span>
                 </label>
                 {uploadedFile && (
                   <p className="text-sm text-gray-500 mt-4">
-                    Current file: {uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    当前文件：{uploadedFile.name}（{(uploadedFile.size / 1024 / 1024).toFixed(2)} MB）
                   </p>
                 )}
               </div>
@@ -790,7 +905,7 @@ export function ResumeAnalysis() {
           {loadingDetail && (
             <div className="card flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-gray-400 mr-3" />
-              <span className="text-sm text-gray-500">Loading candidate detail...</span>
+              <span className="text-sm text-gray-500">正在加载候选人详情...</span>
             </div>
           )}
 
@@ -806,10 +921,13 @@ export function ResumeAnalysis() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStageColor(activeResume.workflow.stage)}`}>
-                      {activeResume.workflow.stage}
+                      {getStageLabel(activeResume.workflow.stage)}
                     </span>
                     <span className="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
-                      {activeResume.workflow.reviewStatus}
+                      {getReviewStatusLabel(activeResume.workflow.reviewStatus)}
+                    </span>
+                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                      {getOutreachStatusLabel(activeResume.workflow.outreachStatus)}
                     </span>
                   </div>
                 </div>
@@ -817,20 +935,20 @@ export function ResumeAnalysis() {
                 {!activeResume.contact.email && (
                   <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                     <p className="text-sm text-amber-800">
-                      No email was extracted from this resume. You can fill it manually below so the candidate can be contacted later.
+                      这份简历里没有成功识别出邮箱。你可以在下方手动补充，方便后续联系候选人。
                     </p>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-sm font-semibold text-gray-900">Editable contact info</h4>
+                  <h4 className="text-sm font-semibold text-gray-900">可编辑联系信息</h4>
                   <button
                     onClick={saveContact}
                     className="btn-secondary flex items-center space-x-2"
                     disabled={!activeContact || savingContact}
                   >
                     {savingContact ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    <span>{savingContact ? 'Saving...' : 'Save Contact'}</span>
+                    <span>{savingContact ? '保存中...' : '保存联系信息'}</span>
                   </button>
                 </div>
 
@@ -839,20 +957,20 @@ export function ResumeAnalysis() {
                     <div className="p-4 rounded-lg bg-gray-50">
                       <label className="flex items-center text-sm text-gray-500 mb-2">
                         <User className="h-4 w-4 mr-2" />
-                        Name
+                        姓名
                       </label>
                       <input
                         type="text"
                         value={activeContact.name ?? ''}
                         onChange={(event) => handleContactFieldChange('name', event.target.value)}
                         className="input-field"
-                        placeholder="Candidate name"
+                        placeholder="候选人姓名"
                       />
                     </div>
                     <div className="p-4 rounded-lg bg-gray-50">
                       <label className="flex items-center text-sm text-gray-500 mb-2">
                         <Mail className="h-4 w-4 mr-2" />
-                        Email
+                        邮箱
                       </label>
                       <input
                         type="email"
@@ -862,13 +980,13 @@ export function ResumeAnalysis() {
                         placeholder="candidate@example.com"
                       />
                       <p className="text-xs text-gray-500 mt-2">
-                        Recommended for receipt emails, assessment links, and interview scheduling.
+                        建议填写邮箱，用于发送回执、测评链接和面试安排。
                       </p>
                     </div>
                     <div className="p-4 rounded-lg bg-gray-50">
                       <label className="flex items-center text-sm text-gray-500 mb-2">
                         <Phone className="h-4 w-4 mr-2" />
-                        Phone
+                        电话
                       </label>
                       <input
                         type="text"
@@ -881,14 +999,14 @@ export function ResumeAnalysis() {
                     <div className="p-4 rounded-lg bg-gray-50">
                       <label className="flex items-center text-sm text-gray-500 mb-2">
                         <MapPin className="h-4 w-4 mr-2" />
-                        Location
+                        地点
                       </label>
                       <input
                         type="text"
                         value={activeContact.location ?? ''}
                         onChange={(event) => handleContactFieldChange('location', event.target.value)}
                         className="input-field"
-                        placeholder="Shanghai, China"
+                        placeholder="例如：上海"
                       />
                     </div>
                   </div>
@@ -896,38 +1014,43 @@ export function ResumeAnalysis() {
               </div>
 
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Screening Summary</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">筛选总结</h3>
                 <p className="text-sm text-gray-600 mb-4">{activeResume.summary}</p>
                 <div className="rounded-lg bg-gray-50 p-4">
-                  <p className="text-sm font-medium text-gray-900 mb-2">Extracted profile</p>
+                  <p className="text-sm font-medium text-gray-900 mb-2">提取结果</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                     <p className="text-gray-700">
-                      <span className="font-medium text-gray-900">Title:</span>{' '}
-                      {activeResume.profile.currentTitle || 'Not clearly found'}
+                      <span className="font-medium text-gray-900">岗位方向：</span>{' '}
+                      <ProtectedTechnicalText value={activeResume.profile.currentTitle} fallback="未明确识别" />
                     </p>
                     <p className="text-gray-700">
-                      <span className="font-medium text-gray-900">Experience:</span>{' '}
+                      <span className="font-medium text-gray-900">工作年限：</span>{' '}
                       {activeResume.profile.yearsExperience
-                        ? `${activeResume.profile.yearsExperience} years`
-                        : 'Not clearly found'}
+                        ? `${activeResume.profile.yearsExperience} 年`
+                        : '未明确识别'}
                     </p>
                     <p className="text-gray-700 md:col-span-2">
-                      <span className="font-medium text-gray-900">Skills:</span>{' '}
+                      <span className="font-medium text-gray-900">核心技能：</span>{' '}
                       {activeResume.profile.skills.length > 0
-                        ? activeResume.profile.skills.join(', ')
-                        : 'No strong keywords detected yet'}
+                        ? activeResume.profile.skills.map((skill, index) => (
+                            <span key={`${skill}-${index}`}>
+                              {index > 0 ? ', ' : ''}
+                              <ProtectedTechnicalText value={skill} />
+                            </span>
+                          ))
+                        : '暂未识别到明确技能关键词'}
                     </p>
                     <p className="text-gray-700 md:col-span-2">
-                      <span className="font-medium text-gray-900">Education:</span>{' '}
+                      <span className="font-medium text-gray-900">教育背景：</span>{' '}
                       {activeResume.profile.education.length > 0
                         ? activeResume.profile.education.join(' | ')
-                        : 'No clear education block detected'}
+                        : '未识别到清晰的教育信息'}
                     </p>
                     <p className="text-gray-700 md:col-span-2">
-                      <span className="font-medium text-gray-900">Highlights:</span>{' '}
+                      <span className="font-medium text-gray-900">亮点摘要：</span>{' '}
                       {activeResume.profile.highlights.length > 0
                         ? activeResume.profile.highlights.join(' | ')
-                        : 'No clear highlights extracted'}
+                        : '暂未提取到明显亮点'}
                     </p>
                   </div>
                 </div>
@@ -935,21 +1058,21 @@ export function ResumeAnalysis() {
 
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">Workflow Control</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">流程管理</h3>
                   <button
                     onClick={saveWorkflow}
                     className="btn-primary flex items-center space-x-2"
                     disabled={!activeWorkflow || savingWorkflow}
                   >
                     {savingWorkflow ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    <span>{savingWorkflow ? 'Saving...' : 'Save Workflow'}</span>
+                    <span>{savingWorkflow ? '保存中...' : '保存流程'}</span>
                   </button>
                 </div>
                 {activeWorkflow && (
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Stage</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">阶段</label>
                         <select
                           value={activeWorkflow.stage}
                           onChange={(event) =>
@@ -965,7 +1088,7 @@ export function ResumeAnalysis() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Review</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">评审状态</label>
                         <select
                           value={activeWorkflow.reviewStatus}
                           onChange={(event) =>
@@ -981,7 +1104,7 @@ export function ResumeAnalysis() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Outreach</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">联系进度</label>
                         <select
                           value={activeWorkflow.outreachStatus}
                           onChange={(event) =>
@@ -1002,7 +1125,7 @@ export function ResumeAnalysis() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Recommended next action</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">建议下一步动作</label>
                       <input
                         type="text"
                         value={activeWorkflow.recommendedNextAction}
@@ -1014,18 +1137,18 @@ export function ResumeAnalysis() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Recruiter notes</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">招聘备注</label>
                       <textarea
                         value={activeWorkflow.notes}
                         onChange={(event) => handleWorkflowFieldChange('notes', event.target.value)}
                         rows={4}
                         className="input-field"
-                        placeholder="Add call outcome, next interview note, or manual review remarks..."
+                        placeholder="补充沟通结果、下一轮面试安排或人工评审备注..."
                       />
                     </div>
 
                     <p className="text-xs text-gray-500">
-                      Last updated {new Date(activeResume.workflow.lastUpdatedAt).toLocaleString()}
+                      最近更新时间：{new Date(activeResume.workflow.lastUpdatedAt).toLocaleString()}
                     </p>
                   </div>
                 )}
@@ -1034,9 +1157,9 @@ export function ResumeAnalysis() {
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Process Timeline</h3>
+                    <h3 className="text-lg font-semibold text-gray-900">流程时间线</h3>
                     <p className="text-sm text-gray-500 mt-1">
-                      Every intake action, workflow move, and recruiter note leaves a trace here.
+                      每一次录入、流转和备注更新，都会记录在这里。
                     </p>
                   </div>
                   <History className="h-5 w-5 text-gray-400" />
@@ -1054,7 +1177,7 @@ export function ResumeAnalysis() {
                             )}
                           </div>
                           <div className="text-xs text-gray-500">
-                            <p>{event.actor}</p>
+                            <p>{getTimelineActorLabel(event.actor)}</p>
                             <p>{new Date(event.createdAt).toLocaleString()}</p>
                           </div>
                         </div>
@@ -1062,24 +1185,26 @@ export function ResumeAnalysis() {
                     </div>
                   ))}
                   {timeline.length === 0 && (
-                    <p className="text-sm text-gray-500">Timeline events will appear once the candidate enters the workflow.</p>
+                    <p className="text-sm text-gray-500">候选人进入流程后，这里会开始记录关键节点。</p>
                   )}
                 </div>
               </div>
 
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Skills Analysis</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">技能分析</h3>
                 <div className="space-y-4">
                   {activeResume.skillAnalysis.map((skill) => (
                     <div key={skill.skill} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                       <div className="flex-1">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-gray-900">{skill.skill}</span>
-                          <span className="text-sm text-gray-600">{skill.match}% match</span>
+                          <span className="font-medium text-gray-900">
+                            <ProtectedTechnicalText value={skill.skill} />
+                          </span>
+                          <span className="text-sm text-gray-600">匹配度 {skill.match}%</span>
                         </div>
                         <div className="flex space-x-4 text-sm text-gray-600">
-                          <span>Candidate level: {skill.level}%</span>
-                          <span>Market demand: {skill.demand}%</span>
+                          <span>候选人水平：{skill.level}%</span>
+                          <span>市场需求：{skill.demand}%</span>
                         </div>
                         <div className="mt-2 bg-gray-200 rounded-full h-2">
                           <div
@@ -1094,7 +1219,104 @@ export function ResumeAnalysis() {
               </div>
 
               <div className="card">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">AI Insights</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">市场需求分析</h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      对照当前技能画像，快速判断哪些能力最热门、最匹配、最值得优先补强。
+                    </p>
+                  </div>
+                  <TrendingUp className="h-5 w-5 text-primary-500" />
+                </div>
+
+                {marketDemandSummary ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-xl bg-blue-50 p-4">
+                        <p className="text-xs text-blue-700">热门技能</p>
+                        <p className="mt-1 text-lg font-semibold text-blue-900">
+                          <ProtectedTechnicalText value={marketDemandSummary.highestDemand?.skill} />
+                        </p>
+                        <p className="mt-1 text-sm text-blue-800">
+                          市场需求 {marketDemandSummary.highestDemand?.demand ?? 0}%
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-emerald-50 p-4">
+                        <p className="text-xs text-emerald-700">平均市场需求</p>
+                        <p className="mt-1 text-lg font-semibold text-emerald-900">
+                          {marketDemandSummary.averageDemand}%
+                        </p>
+                        <p className="mt-1 text-sm text-emerald-800">
+                          {marketDemandSummary.marketReadySkills} 项技能已具备市场竞争力
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-violet-50 p-4">
+                        <p className="text-xs text-violet-700">最强市场匹配</p>
+                        <p className="mt-1 text-lg font-semibold text-violet-900">
+                          <ProtectedTechnicalText value={marketDemandSummary.bestFit?.skill} />
+                        </p>
+                        <p className="mt-1 text-sm text-violet-800">
+                          匹配 {marketDemandSummary.bestFit?.match ?? 0}% / 需求 {marketDemandSummary.bestFit?.demand ?? 0}%
+                        </p>
+                      </div>
+                      <div className="rounded-xl bg-amber-50 p-4">
+                        <p className="text-xs text-amber-700">下一步补强</p>
+                        <p className="mt-1 text-lg font-semibold text-amber-900">
+                          <ProtectedTechnicalText value={marketDemandSummary.upskillPriority?.skill} />
+                        </p>
+                        <p className="mt-1 text-sm text-amber-800">
+                          当前水平 {marketDemandSummary.upskillPriority?.level ?? 0}% / 市场需求 {marketDemandSummary.upskillPriority?.demand ?? 0}%
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      {marketDemandSummary.demandRanking.map((skill) => (
+                        <div key={`market-${skill.skill}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-gray-900">
+                                <ProtectedTechnicalText value={skill.skill} />
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                候选人水平 {skill.level}% / 当前匹配 {skill.match}%
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700">
+                              需求 {skill.demand}%
+                            </span>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            <div>
+                              <div className="mb-1 flex justify-between text-xs text-gray-500">
+                                <span>市场热度</span>
+                                <span>{skill.demand}%</span>
+                              </div>
+                              <div className="h-2 rounded-full bg-gray-200">
+                                <div className="h-2 rounded-full bg-blue-500" style={{ width: `${skill.demand}%` }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="mb-1 flex justify-between text-xs text-gray-500">
+                                <span>候选人储备</span>
+                                <span>{skill.level}%</span>
+                              </div>
+                              <div className="h-2 rounded-full bg-gray-200">
+                                <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${skill.level}%` }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">上传并解析简历后，这里会显示市场需求分析。</p>
+                )}
+              </div>
+
+              <div className="card">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">AI 洞察</h3>
                 <div className="space-y-4">
                   {activeResume.insights.map((insight, index) => (
                     <div key={index} className="flex items-start space-x-3 p-4 border border-gray-200 rounded-lg">
@@ -1103,7 +1325,7 @@ export function ResumeAnalysis() {
                         <div className="flex items-center space-x-2 mb-1">
                           <h4 className="font-medium text-gray-900">{insight.title}</h4>
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(insight.priority)}`}>
-                            {insight.priority} priority
+                            {getPriorityLabel(insight.priority)}
                           </span>
                         </div>
                         <p className="text-sm text-gray-600">{insight.description}</p>
@@ -1120,9 +1342,9 @@ export function ResumeAnalysis() {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Task Board</h3>
+                <h3 className="text-lg font-semibold text-gray-900">任务看板</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  Track recruiter actions across outreach, screening, and interview follow-up.
+                  统一跟踪联系、筛选、面试跟进等招聘动作。
                 </p>
               </div>
               <button
@@ -1131,26 +1353,26 @@ export function ResumeAnalysis() {
                 disabled={!activeResume || savingTasks}
               >
                 {savingTasks ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                <span>{savingTasks ? 'Saving...' : 'Save Tasks'}</span>
+                <span>{savingTasks ? '保存中...' : '保存任务'}</span>
               </button>
             </div>
             {activeResume ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-lg bg-slate-50 p-3">
-                    <p className="text-gray-500">Open</p>
+                    <p className="text-gray-500">未完成</p>
                     <p className="mt-1 text-xl font-semibold text-gray-900">{taskStats.open}</p>
                   </div>
                   <div className="rounded-lg bg-green-50 p-3">
-                    <p className="text-gray-500">Done</p>
+                    <p className="text-gray-500">已完成</p>
                     <p className="mt-1 text-xl font-semibold text-green-700">{taskStats.done}</p>
                   </div>
                   <div className="rounded-lg bg-red-50 p-3">
-                    <p className="text-gray-500">Blocked</p>
+                    <p className="text-gray-500">受阻</p>
                     <p className="mt-1 text-xl font-semibold text-red-700">{taskStats.blocked}</p>
                   </div>
                   <div className="rounded-lg bg-blue-50 p-3">
-                    <p className="text-gray-500">Total</p>
+                    <p className="text-gray-500">总数</p>
                     <p className="mt-1 text-xl font-semibold text-blue-700">{taskStats.total}</p>
                   </div>
                 </div>
@@ -1160,7 +1382,7 @@ export function ResumeAnalysis() {
                   className="w-full btn-primary flex items-center justify-center space-x-2"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>Add Custom Task</span>
+                  <span>新增自定义任务</span>
                 </button>
 
                 <div className="space-y-4">
@@ -1169,7 +1391,7 @@ export function ResumeAnalysis() {
                       <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="flex items-center gap-2">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getTaskStatusColor(task.status)}`}>
-                            {TASK_STATUS_OPTIONS.find((option) => option.value === task.status)?.label ?? task.status}
+                            {getTaskStatusLabel(task.status)}
                           </span>
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700">
                             {getTaskKindLabel(task.kind)}
@@ -1181,25 +1403,25 @@ export function ResumeAnalysis() {
                             className="text-sm text-red-600 hover:text-red-700 flex items-center gap-1"
                           >
                             <Trash2 className="h-4 w-4" />
-                            <span>Remove</span>
+                            <span>删除</span>
                           </button>
                         )}
                       </div>
 
                       <div className="space-y-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Task title</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">任务标题</label>
                           <input
                             type="text"
                             value={task.title}
                             onChange={(event) => handleTaskFieldChange(task.id, 'title', event.target.value)}
                             className="input-field"
-                            placeholder="Add a recruiter action..."
+                            placeholder="填写一个招聘动作..."
                           />
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">任务描述</label>
                           <textarea
                             value={task.description ?? ''}
                             onChange={(event) =>
@@ -1207,13 +1429,13 @@ export function ResumeAnalysis() {
                             }
                             rows={3}
                             className="input-field"
-                            placeholder="Clarify what needs to happen next."
+                            placeholder="说明下一步需要做什么。"
                           />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">状态</label>
                             <select
                               value={task.status}
                               onChange={(event) =>
@@ -1229,7 +1451,7 @@ export function ResumeAnalysis() {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Channel</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">渠道</label>
                             <select
                               value={task.channel}
                               onChange={(event) =>
@@ -1248,7 +1470,7 @@ export function ResumeAnalysis() {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Owner</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">负责人</label>
                             <input
                               type="text"
                               value={task.owner ?? ''}
@@ -1256,11 +1478,11 @@ export function ResumeAnalysis() {
                                 handleTaskFieldChange(task.id, 'owner', event.target.value || null)
                               }
                               className="input-field"
-                              placeholder="Recruiter or interviewer name"
+                              placeholder="招聘负责人或面试官姓名"
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Due at</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">截止时间</label>
                             <input
                               type="datetime-local"
                               value={toDateTimeInputValue(task.dueAt)}
@@ -1275,12 +1497,12 @@ export function ResumeAnalysis() {
                         <div className="flex items-center justify-between text-xs text-gray-500">
                           <p className="flex items-center gap-1">
                             <Clock3 className="h-3.5 w-3.5" />
-                            Updated {new Date(task.updatedAt).toLocaleString()}
+                            更新于 {new Date(task.updatedAt).toLocaleString()}
                           </p>
                           {task.dueAt && (
                             <p className="flex items-center gap-1">
                               <Calendar className="h-3.5 w-3.5" />
-                              Due {new Date(task.dueAt).toLocaleString()}
+                              截止于 {new Date(task.dueAt).toLocaleString()}
                             </p>
                           )}
                         </div>
@@ -1288,40 +1510,40 @@ export function ResumeAnalysis() {
                     </div>
                   ))}
                   {activeTasks.length === 0 && (
-                    <p className="text-sm text-gray-500">Tasks will appear here once the candidate is stored.</p>
+                    <p className="text-sm text-gray-500">候选人保存后，这里会展示可跟进任务。</p>
                   )}
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Select a candidate to manage workflow tasks.</p>
+              <p className="text-sm text-gray-500">请选择一位候选人后再管理任务。</p>
             )}
           </div>
 
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Receipt Email</h3>
+              <h3 className="text-lg font-semibold text-gray-900">回执邮件</h3>
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${getDeliveryStatusColor(receiptStatus)}`}>
-                {receiptStatus}
+                {getDeliveryStatusLabel(receiptStatus)}
               </span>
             </div>
             {activeResume ? (
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">
-                  Send a receipt email once the candidate email is available. If SMTP is not configured, the app will generate a preview instead.
+                  候选人邮箱可用后，就可以发送回执邮件；如果 `SMTP` 尚未配置，系统会先生成一份预览稿。
                 </p>
                 <div className="grid grid-cols-1 gap-2 text-sm text-gray-600">
-                  <p>Attempts: {activeResume.communication.receiptEmailCount}</p>
+                  <p>尝试次数：{activeResume.communication.receiptEmailCount}</p>
                   <p>
-                    Last attempt:{' '}
+                    最近尝试：{' '}
                     {activeResume.communication.receiptEmailLastAttemptAt
                       ? new Date(activeResume.communication.receiptEmailLastAttemptAt).toLocaleString()
-                      : 'Never'}
+                      : '暂无'}
                   </p>
                   <p>
-                    Last sent:{' '}
+                    最近发送：{' '}
                     {activeResume.communication.receiptEmailSentAt
                       ? new Date(activeResume.communication.receiptEmailSentAt).toLocaleString()
-                      : 'Not sent yet'}
+                      : '尚未发送'}
                   </p>
                 </div>
                 <button
@@ -1330,10 +1552,10 @@ export function ResumeAnalysis() {
                   disabled={!activeResume.contact.email || sendingReceipt}
                 >
                   {sendingReceipt ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                  <span>{sendingReceipt ? 'Sending...' : 'Send Receipt Email'}</span>
+                  <span>{sendingReceipt ? '发送中...' : '发送回执邮件'}</span>
                 </button>
                 {!activeResume.contact.email && (
-                  <p className="text-xs text-amber-700">Add an email address first before sending the receipt.</p>
+                  <p className="text-xs text-amber-700">发送前请先补充候选人邮箱。</p>
                 )}
                 {activeResume.communication.receiptEmailLastError && (
                   <p className="text-xs text-red-600">{activeResume.communication.receiptEmailLastError}</p>
@@ -1345,36 +1567,36 @@ export function ResumeAnalysis() {
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Select a candidate to send a receipt email.</p>
+              <p className="text-sm text-gray-500">请选择一位候选人后再发送回执邮件。</p>
             )}
           </div>
 
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Interview Invite</h3>
+              <h3 className="text-lg font-semibold text-gray-900">面试邀请</h3>
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${getDeliveryStatusColor(interviewInviteStatus)}`}>
-                {interviewInviteStatus}
+                {getDeliveryStatusLabel(interviewInviteStatus)}
               </span>
             </div>
             {activeResume ? (
               <div className="space-y-3">
                 <p className="text-sm text-gray-600">
-                  Send the interview invitation after screening is complete. The platform will move the candidate into the interview stage and keep the outreach timeline updated.
+                  筛选完成后可以直接发送面试邀请，系统会同步推进候选人阶段并更新联系时间线。
                 </p>
                 <div className="grid grid-cols-1 gap-2 text-sm text-gray-600">
-                  <p>Current stage: {activeResume.workflow.stage}</p>
-                  <p>Attempts: {activeResume.communication.interviewInviteEmailCount}</p>
+                  <p>当前阶段：{getStageLabel(activeResume.workflow.stage)}</p>
+                  <p>尝试次数：{activeResume.communication.interviewInviteEmailCount}</p>
                   <p>
-                    Last attempt:{' '}
+                    最近尝试：{' '}
                     {activeResume.communication.interviewInviteEmailLastAttemptAt
                       ? new Date(activeResume.communication.interviewInviteEmailLastAttemptAt).toLocaleString()
-                      : 'Never'}
+                      : '暂无'}
                   </p>
                   <p>
-                    Last sent:{' '}
+                    最近发送：{' '}
                     {activeResume.communication.interviewInviteEmailSentAt
                       ? new Date(activeResume.communication.interviewInviteEmailSentAt).toLocaleString()
-                      : 'Not sent yet'}
+                      : '尚未发送'}
                   </p>
                 </div>
                 <button
@@ -1383,14 +1605,14 @@ export function ResumeAnalysis() {
                   disabled={!activeResume.contact.email || !canSendInterviewInvite || sendingInterviewInvite}
                 >
                   {sendingInterviewInvite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                  <span>{sendingInterviewInvite ? 'Sending...' : 'Send Interview Invite'}</span>
+                  <span>{sendingInterviewInvite ? '发送中...' : '发送面试邀请'}</span>
                 </button>
                 {!activeResume.contact.email && (
-                  <p className="text-xs text-amber-700">Add an email address first before sending the interview invite.</p>
+                  <p className="text-xs text-amber-700">发送前请先补充候选人邮箱。</p>
                 )}
                 {activeResume.contact.email && !canSendInterviewInvite && (
                   <p className="text-xs text-amber-700">
-                    Interview invites are available for candidates in the new, screening, or interview stages only.
+                    只有处于新候选人、筛选中或面试中的候选人，才可以发送面试邀请。
                   </p>
                 )}
                 {activeResume.communication.interviewInviteEmailLastError && (
@@ -1403,12 +1625,12 @@ export function ResumeAnalysis() {
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Select a candidate to send an interview invite.</p>
+              <p className="text-sm text-gray-500">请选择一位候选人后再发送面试邀请。</p>
             )}
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Candidate Score</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">候选人评分</h3>
             <div className="text-center">
               <div className="relative inline-flex items-center justify-center">
                 <svg className="w-24 h-24 transform -rotate-90">
@@ -1438,12 +1660,12 @@ export function ResumeAnalysis() {
                   <span className="text-2xl font-bold text-gray-900">{score}%</span>
                 </div>
               </div>
-              <p className="text-sm text-gray-600 mt-2">Current screening readiness</p>
+              <p className="text-sm text-gray-600 mt-2">当前筛选就绪度</p>
             </div>
           </div>
 
           <div className="card">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Resume Composition</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">简历构成</h3>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -1469,7 +1691,7 @@ export function ResumeAnalysis() {
                 <div key={index} className="flex items-center justify-between text-sm">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                    <span className="text-gray-700">{item.name}</span>
+                    <span className="text-gray-700">{getCompositionLabel(item.name)}</span>
                   </div>
                   <span className="font-medium text-gray-900">{item.value}%</span>
                 </div>
@@ -1479,14 +1701,14 @@ export function ResumeAnalysis() {
 
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Resume Preview</h3>
+              <h3 className="text-lg font-semibold text-gray-900">简历预览</h3>
               {activeResume && (
                 <button
                   onClick={() => setShowFullText((current) => !current)}
                   className="text-sm text-primary-600 hover:text-primary-700 flex items-center space-x-1"
                 >
                   {showFullText ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  <span>{showFullText ? 'Collapse' : 'Expand'}</span>
+                  <span>{showFullText ? '收起' : '展开'}</span>
                 </button>
               )}
             </div>
@@ -1500,22 +1722,22 @@ export function ResumeAnalysis() {
                 </div>
                 <button className="w-full btn-secondary flex items-center justify-center space-x-2">
                   <Download className="h-4 w-4" />
-                  <span>Export Analysis Snapshot</span>
+                  <span>导出分析快照</span>
                 </button>
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Upload a resume to inspect the extracted text.</p>
+              <p className="text-sm text-gray-500">上传一份简历后，这里会显示提取出的原文内容。</p>
             )}
           </div>
 
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Candidate Queue</h3>
+              <h3 className="text-lg font-semibold text-gray-900">候选人队列</h3>
               {loadingHistory && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
             </div>
             <div className="space-y-3">
               {recentResumes.length === 0 && !loadingHistory && (
-                <p className="text-sm text-gray-500">No candidates stored yet.</p>
+                <p className="text-sm text-gray-500">暂时还没有已保存的候选人。</p>
               )}
               {recentResumes.map((resume) => (
                 <button
@@ -1532,17 +1754,17 @@ export function ResumeAnalysis() {
                       {resume.contact.name || resume.fileName}
                     </p>
                     <span className={`px-2 py-1 rounded-full text-[11px] font-medium ${getStageColor(resume.workflow.stage)}`}>
-                      {resume.workflow.stage}
+                      {getStageLabel(resume.workflow.stage)}
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mt-1 truncate">
-                    {resume.contact.email || 'No email found'} - Score {resume.score}%
+                    {resume.contact.email || '未识别到邮箱'} · 评分 {resume.score}%
                   </p>
                   <p className="text-xs text-gray-500 mt-1 truncate">
                     {resume.workflow.recommendedNextAction}
                   </p>
                   <p className="text-xs text-gray-500 mt-1 truncate">
-                    {resume.tasks.filter((task) => task.status !== 'done').length} open tasks
+                    {resume.tasks.filter((task) => task.status !== 'done').length} 个未完成任务
                   </p>
                 </button>
               ))}

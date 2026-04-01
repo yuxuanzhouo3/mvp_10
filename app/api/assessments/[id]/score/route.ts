@@ -72,7 +72,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const existing = await getAssessmentRecordById(params.id)
 
     if (!existing) {
-      return NextResponse.json({ error: 'Assessment not found.' }, { status: 404 })
+      return NextResponse.json({ error: '未找到对应的评估记录。' }, { status: 404 })
     }
 
     const body = (await request.json()) as {
@@ -103,14 +103,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }))
 
     if (!updated) {
-      return NextResponse.json({ error: 'Assessment not found.' }, { status: 404 })
+      return NextResponse.json({ error: '未找到对应的评估记录。' }, { status: 404 })
     }
 
     await syncAssessmentOutcome(updated)
 
     return NextResponse.json(updated)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Assessment scoring failed.'
+    const message = error instanceof Error ? error.message : '评估评分失败。'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

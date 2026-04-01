@@ -22,30 +22,30 @@ function escapeHtml(value: string) {
 }
 
 function buildReceiptContent(record: ResumeRecord) {
-  const platformName = process.env.PLATFORM_NAME || 'JobSearch Platform'
+  const platformName = process.env.PLATFORM_NAME || '招聘平台'
   const schedulerUrl = process.env.INTERVIEW_SCHEDULING_URL
   const supportEmail = process.env.RECRUITING_SUPPORT_EMAIL || process.env.SMTP_FROM || 'recruiting@example.com'
-  const candidateName = record.contact.name || 'there'
-  const subject = `${platformName}: We received your resume`
+  const candidateName = record.contact.name || '同学'
+  const subject = `${platformName}：我们已收到你的简历`
 
-  const intro = `Hi ${candidateName},`
+  const intro = `${candidateName}，你好：`
   const lines = [
     intro,
     '',
-    `Thanks for submitting your resume to ${platformName}. We have received your information successfully and our team will review it shortly.`,
+    `感谢你向 ${platformName} 投递简历。我们已经成功收到你的信息，招聘团队会尽快完成初步查看。`,
     '',
-    'What happens next:',
-    '- We review your background and the extracted resume details.',
-    '- If your profile matches an open role, we will contact you for the next step.',
-    '- You can reply to this email if you want to update your contact details.',
+    '接下来会发生什么：',
+    '- 我们会审核你的背景信息和简历提取结果。',
+    '- 如果你的资料与当前岗位匹配，我们会尽快联系你进入下一步。',
+    '- 如果你的联系方式有更新，也可以直接回复这封邮件告诉我们。',
   ]
 
   if (schedulerUrl) {
-    lines.push('', `If you prefer to move faster, you can also book an interview slot here: ${schedulerUrl}`)
+    lines.push('', `如果你希望更快推进，也可以通过下面的链接预约沟通时间：${schedulerUrl}`)
   }
 
   lines.push(...buildContactOptionTextLines())
-  lines.push('', `Questions? Reply to this email or contact ${supportEmail}.`, '', `Best regards,`, `${platformName} Recruiting`)
+  lines.push('', `如有问题，欢迎直接回复这封邮件，或联系 ${supportEmail}。`, '', '此致', `${platformName} 招聘团队`)
 
   const text = lines.join('\n')
   const htmlParagraphs = lines.map((line) => {
@@ -75,7 +75,7 @@ function buildReceiptContent(record: ResumeRecord) {
 
 export async function sendReceiptEmail(record: ResumeRecord): Promise<ReceiptDeliveryResult> {
   if (!record.contact.email) {
-    throw new Error('Candidate email is required before sending a receipt email.')
+    throw new Error('发送回执邮件前需要先填写候选人邮箱。')
   }
 
   const { subject, text, html } = buildReceiptContent(record)
@@ -92,7 +92,7 @@ export async function sendReceiptEmail(record: ResumeRecord): Promise<ReceiptDel
       subject,
       text,
       html,
-      message: 'SMTP is not configured yet. A receipt draft was generated but not sent.',
+      message: '当前未配置 SMTP，已生成回执邮件预览稿，但尚未真正发送。',
     }
   }
 
@@ -117,7 +117,7 @@ export async function sendReceiptEmail(record: ResumeRecord): Promise<ReceiptDel
     subject,
     text,
     html,
-    message: 'Receipt email sent successfully.',
+    message: '回执邮件发送成功。',
     messageId: info.messageId,
   }
 }

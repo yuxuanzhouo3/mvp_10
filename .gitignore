@@ -1,4 +1,11 @@
 node_modules
+.next
 .vercel
 data
 .env.local
+*.log
+*.err
+*.out
+*.pid
+*.tsbuildinfo
+.DS_Store

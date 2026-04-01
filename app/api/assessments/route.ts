@@ -43,7 +43,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(records)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load assessments.'
+    const message = error instanceof Error ? error.message : '加载评估列表失败。'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -57,14 +57,15 @@ export async function POST(request: Request) {
     }
 
     if (!isMode(body.mode)) {
-      return NextResponse.json({ error: 'Assessment mode is required.' }, { status: 400 })
+      return NextResponse.json({ error: '请选择评估模式。' }, { status: 400 })
     }
 
-    const job = typeof body.jobId === 'string' && body.jobId.trim() ? await getJobById(body.jobId) : null
-    const resume =
+    const [job, resume] = await Promise.all([
+      typeof body.jobId === 'string' && body.jobId.trim() ? getJobById(body.jobId) : Promise.resolve(null),
       typeof body.resumeId === 'string' && body.resumeId.trim()
-        ? await getResumeRecordById(body.resumeId)
-        : null
+        ? getResumeRecordById(body.resumeId)
+        : Promise.resolve(null),
+    ])
 
     const draft = await createAssessmentDraft(job, resume, body.mode)
     const now = new Date().toISOString()
@@ -106,8 +107,8 @@ export async function POST(request: Request) {
       summary: {
         overallScore: null,
         recommendation: null,
-        summary: 'Question set generated. Start the session and submit answers for scoring.',
-        nextStep: 'Complete the question set to generate an AI screening decision.',
+        summary: '题目已生成，可以直接填写答案，并在完成后提交评分。',
+        nextStep: '先完成整套题，再提交生成 AI 评估结论。',
         sessionDurationSeconds: 0,
         completedAt: null,
         rubric: {
@@ -122,7 +123,7 @@ export async function POST(request: Request) {
     await addAssessmentRecord(record)
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create assessment.'
+    const message = error instanceof Error ? error.message : '生成评估失败。'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

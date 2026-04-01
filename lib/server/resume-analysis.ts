@@ -3,6 +3,14 @@ import path from 'path'
 import mammoth from 'mammoth'
 import pdfParse from 'pdf-parse'
 
+import { fetchJsonObjectFromChat } from '@/lib/server/fast-json-chat'
+import {
+  getDefaultFastTextModel,
+  getDefaultTextModel,
+  getProviderApiKey,
+  getOpenAIUrl,
+  shouldPreferDashScope,
+} from '@/lib/server/openai-config'
 import { normalizeResumeContactInfo } from '@/lib/resume-contact'
 import type {
   ResumeAnalysisResult,
@@ -12,6 +20,9 @@ import type {
   ResumeProfile,
   ResumeSkillAnalysis,
 } from '@/types/resume'
+
+const RESUME_ANALYSIS_TIMEOUT_MS = 7000
+const DASHSCOPE_RESUME_ANALYSIS_TIMEOUT_MS = 5000
 
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
 const PHONE_PATTERN =
@@ -31,6 +42,14 @@ const CHINESE_REGION_SUFFIX_PATTERN = /[\u4e00-\u9fa5]{2,}(?:省|市|区|县|州
 const EXPERIENCE_CONTEXT_PATTERN =
   /(experience|employment|work|intern|project|career|工作经历|实习经历|项目经历|任职|公司|岗位|职责)/i
 const BIRTH_CONTEXT_PATTERN = /(born|birth|dob|出生|出生年月|生日)/i
+const WORK_SECTION_HEADING_PATTERN =
+  /^(?:work experience|experience|employment|internship|intern experience|工作经历|实习经历|任职经历|职业经历)$/i
+const NON_WORK_SECTION_HEADING_PATTERN =
+  /^(?:education|education background|education history|projects|project experience|skills|certifications|summary|profile|about me|self evaluation|校园经历|教育背景|教育经历|项目经历|专业技能|技能|荣誉奖项|校园活动|社团经历|自我评价|个人简介|个人优势)$/i
+const EXPLICIT_EXPERIENCE_PATTERN =
+  /(?:约|近|超过|至少|累计|拥有|具备)?\s*(\d{1,2})(?:\s*\+)?\s*(?:年|years?)(?:以上)?(?:[^。\n]{0,12})(?:工作经验|经验|从业经验|开发经验|测试经验|运营经验|经验积累)/i
+const DATE_RANGE_PATTERN =
+  /((?:19|20)\d{2})(?:[./年-]?\s*(0?[1-9]|1[0-2]))?\s*(?:月)?\s*(?:-|–|—|~|～|至|到)\s*(((?:19|20)\d{2})(?:[./年-]?\s*(0?[1-9]|1[0-2]))?\s*(?:月)?|至今|现在|current|present)/gi
 
 const SKILL_DEMAND: Record<string, number> = {
   Python: 92,
@@ -104,6 +123,24 @@ function clamp(value: number, min: number, max: number) {
 
 function dedupe(values: string[]) {
   return Array.from(new Set(values))
+}
+
+function shouldUseAiResumeAnalysis() {
+  return process.env.ENABLE_AI_RESUME_ANALYSIS?.trim() === '1'
+}
+
+function trimEnvValue(value: string | undefined) {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
+}
+
+function getResumeAnalysisModel() {
+  return (
+    trimEnvValue(process.env.OPENAI_RESUME_ANALYSIS_MODEL) ||
+    (shouldPreferDashScope() ? getDefaultFastTextModel() : null) ||
+    trimEnvValue(process.env.OPENAI_RESUME_MODEL) ||
+    getDefaultTextModel()
+  )
 }
 
 function normalizeFullWidthChars(text: string) {
@@ -339,7 +376,124 @@ function hasNearbyContext(text: string, index: number, pattern: RegExp, span = 4
   return pattern.test(text.slice(start, end))
 }
 
-function extractYearsExperience(text: string) {
+function parseWorkSectionLines(text: string) {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const workLines: string[] = []
+  let inWorkSection = false
+
+  for (const line of lines) {
+    const normalized = stripFieldLabelPrefix(line)
+
+    if (WORK_SECTION_HEADING_PATTERN.test(normalized)) {
+      inWorkSection = true
+      continue
+    }
+
+    if (NON_WORK_SECTION_HEADING_PATTERN.test(normalized) || SECTION_HEADING_PATTERN.test(normalized)) {
+      inWorkSection = false
+      continue
+    }
+
+    if (inWorkSection) {
+      workLines.push(normalized)
+    }
+  }
+
+  return workLines
+}
+
+function addMonthRange(months: Set<number>, startYear: number, startMonth: number, endYear: number, endMonth: number) {
+  const startIndex = startYear * 12 + (startMonth - 1)
+  const endIndex = endYear * 12 + (endMonth - 1)
+
+  if (endIndex < startIndex) {
+    return
+  }
+
+  for (let index = startIndex; index <= endIndex; index += 1) {
+    months.add(index)
+  }
+}
+
+function estimateYearsFromDateRanges(text: string) {
+  const currentDate = new Date()
+  const currentYear = currentDate.getFullYear()
+  const currentMonth = currentDate.getMonth() + 1
+  const workLines = parseWorkSectionLines(text)
+
+  if (workLines.length === 0) {
+    return null
+  }
+
+  const months = new Set<number>()
+
+  for (const line of workLines) {
+    DATE_RANGE_PATTERN.lastIndex = 0
+    let match = DATE_RANGE_PATTERN.exec(line)
+
+    while (match) {
+      const startYear = Number(match[1])
+      const startMonth = match[2] ? Number(match[2]) : 1
+      const endToken = match[3]
+      const endYear = match[4] ? Number(match[4]) : currentYear
+      const endMonth = match[5]
+        ? Number(match[5])
+        : /^(?:至今|现在|current|present)$/i.test(endToken)
+          ? currentMonth
+          : 12
+
+      if (
+        startYear < 1990 ||
+        startYear > currentYear + 1 ||
+        endYear < 1990 ||
+        endYear > currentYear + 1 ||
+        startMonth < 1 ||
+        startMonth > 12 ||
+        endMonth < 1 ||
+        endMonth > 12
+      ) {
+        continue
+      }
+
+      addMonthRange(months, startYear, startMonth, endYear, endMonth)
+      match = DATE_RANGE_PATTERN.exec(line)
+    }
+  }
+
+  const totalMonths = months.size
+
+  if (totalMonths < 3) {
+    return null
+  }
+
+  return clamp(Math.max(1, Math.round(totalMonths / 12)), 1, 25)
+}
+
+function estimateYearsFromExplicitExperience(text: string) {
+  const match = text.match(EXPLICIT_EXPERIENCE_PATTERN)
+
+  if (!match) {
+    return null
+  }
+
+  return clamp(Number(match[1]), 0, 25)
+}
+
+export function estimateYearsExperienceFromResumeText(text: string) {
+  const explicitYears = estimateYearsFromExplicitExperience(text)
+  if (explicitYears !== null) {
+    return explicitYears
+  }
+
+  const rangedYears = estimateYearsFromDateRanges(text)
+  if (rangedYears !== null) {
+    return rangedYears
+  }
+
   const currentYear = new Date().getFullYear()
   const yearMatches = Array.from(text.matchAll(/\b(19|20)\d{2}\b/g))
     .map((match) => ({
@@ -355,7 +509,12 @@ function extractYearsExperience(text: string) {
   const inExperienceContext = yearMatches.filter((item) =>
     hasNearbyContext(text, item.index, EXPERIENCE_CONTEXT_PATTERN)
   )
-  const candidatePool = inExperienceContext.length > 0 ? inExperienceContext : yearMatches
+
+  if (inExperienceContext.length === 0) {
+    return null
+  }
+
+  const candidatePool = inExperienceContext
   const nonBirthYears = candidatePool.filter(
     (item) => !hasNearbyContext(text, item.index, BIRTH_CONTEXT_PATTERN)
   )
@@ -446,10 +605,10 @@ function buildComposition(
   ])
 
   return [
-    { name: 'Technical Skills', value: values[0], color: COMPOSITION_COLORS[0] },
-    { name: 'Experience', value: values[1], color: COMPOSITION_COLORS[1] },
-    { name: 'Education', value: values[2], color: COMPOSITION_COLORS[2] },
-    { name: 'Projects', value: values[3], color: COMPOSITION_COLORS[3] },
+    { name: '技术技能', value: values[0], color: COMPOSITION_COLORS[0] },
+    { name: '经验经历', value: values[1], color: COMPOSITION_COLORS[1] },
+    { name: '教育背景', value: values[2], color: COMPOSITION_COLORS[2] },
+    { name: '项目实践', value: values[3], color: COMPOSITION_COLORS[3] },
   ]
 }
 
@@ -475,8 +634,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (contact.email && contact.phone) {
     insights.push({
       type: 'strength',
-      title: 'Contact information is complete',
-      description: 'The resume includes both email and phone, which makes follow-up easier.',
+      title: '联系方式较完整',
+      description: '简历中同时包含邮箱和电话，便于后续联系与推进。',
       priority: 'high',
     })
   }
@@ -484,8 +643,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (profile.skills.length >= 5) {
     insights.push({
       type: 'strength',
-      title: 'Skills section is rich enough for matching',
-      description: `Detected ${profile.skills.length} market-relevant skills that can feed recommendation and screening.`,
+      title: '技能信息较丰富',
+      description: `已识别 ${profile.skills.length} 项与市场相关的技能，有助于推荐和筛选判断。`,
       priority: 'high',
     })
   }
@@ -493,8 +652,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (profile.yearsExperience && profile.yearsExperience >= 3) {
     insights.push({
       type: 'strength',
-      title: 'Work history looks credible',
-      description: `The resume shows roughly ${profile.yearsExperience} years of experience, enough for role matching.`,
+      title: '工作经历具备参考价值',
+      description: `简历显示约 ${profile.yearsExperience} 年经验，足以支持岗位匹配判断。`,
       priority: 'medium',
     })
   }
@@ -502,8 +661,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (!contact.email || !contact.phone) {
     insights.push({
       type: 'warning',
-      title: 'Critical contact field is missing',
-      description: 'Email or phone could not be extracted confidently. You may need manual review before outreach.',
+      title: '关键联系方式缺失',
+      description: '邮箱或电话未能稳定识别，建议在联系候选人前人工补全。',
       priority: 'high',
     })
   }
@@ -511,8 +670,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (profile.education.length === 0) {
     insights.push({
       type: 'improvement',
-      title: 'Education details are weak or absent',
-      description: 'Adding degree, school, or certification details would make background checks and fit analysis clearer.',
+      title: '教育信息不足',
+      description: '如果补充学校、学历或证书信息，会更有利于背景核验和岗位适配分析。',
       priority: 'medium',
     })
   }
@@ -520,8 +679,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (profile.skills.length < 4) {
     insights.push({
       type: 'improvement',
-      title: 'Skill keywords could be expanded',
-      description: 'The resume has limited structured skill keywords, which may reduce match quality in automated screening.',
+      title: '技能关键词可进一步补充',
+      description: '当前结构化技能关键词较少，可能影响自动筛选和匹配质量。',
       priority: 'medium',
     })
   }
@@ -529,8 +688,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (textLength < 350) {
     insights.push({
       type: 'warning',
-      title: 'Resume content looks too short',
-      description: 'The extracted text is brief, so parsing confidence and downstream AI analysis may be limited.',
+      title: '简历内容偏短',
+      description: '提取出的文本较少，解析置信度和后续 AI 分析效果可能都会受到影响。',
       priority: 'medium',
     })
   }
@@ -538,8 +697,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (!contact.name && !contact.location && profile.skills.length <= 1) {
     insights.push({
       type: 'warning',
-      title: 'OCR extraction may be noisy',
-      description: 'Few structured fields were recognized. Manually verify core profile details before screening.',
+      title: 'OCR 识别可能存在噪声',
+      description: '当前识别出的结构化字段较少，建议在筛选前人工核验核心信息。',
       priority: 'high',
     })
   }
@@ -547,8 +706,8 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (profile.yearsExperience !== null && profile.yearsExperience >= 20) {
     insights.push({
       type: 'warning',
-      title: 'Experience estimate may need manual review',
-      description: 'Detected years are unusually high for a resume. Confirm date parsing before making hiring decisions.',
+      title: '工作年限估算建议复核',
+      description: '识别出的工作年限偏高，建议先确认日期解析是否准确，再继续招聘判断。',
       priority: 'medium',
     })
   }
@@ -557,14 +716,14 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
 }
 
 function buildSummary(contact: ResumeContactInfo, profile: ResumeProfile, score: number) {
-  const title = profile.currentTitle ?? 'candidate'
+  const title = profile.currentTitle?.trim() || '候选人'
   const experienceText = profile.yearsExperience
-    ? `about ${profile.yearsExperience} years of experience`
-    : 'an unclear amount of experience'
-  const skillsText = profile.skills.length > 0 ? profile.skills.slice(0, 4).join(', ') : 'limited explicit skill keywords'
-  const contactText = [contact.email, contact.phone].filter(Boolean).length >= 2 ? 'complete contact details' : 'partial contact details'
+    ? `约 ${profile.yearsExperience} 年工作经验`
+    : '工作年限暂未明确识别'
+  const skillsText = profile.skills.length > 0 ? profile.skills.slice(0, 4).join('、') : '技能关键词仍较少'
+  const contactText = [contact.email, contact.phone].filter(Boolean).length >= 2 ? '联系方式较完整' : '联系方式仍需补充'
 
-  return `${title} resume parsed with ${contactText}, ${experienceText}, and key skills including ${skillsText}. Current readiness score is ${score}/100.`
+  return `${title} 的简历已完成解析，${contactText}，${experienceText}，当前识别到的重点技能包括 ${skillsText}。当前筛选就绪度为 ${score}/100。`
 }
 
 function buildHeuristicAnalysis(text: string): ResumeAnalysisResult {
@@ -582,7 +741,7 @@ function buildHeuristicAnalysis(text: string): ResumeAnalysisResult {
 
   const profile: ResumeProfile = {
     currentTitle: extractCurrentTitle(lines),
-    yearsExperience: extractYearsExperience(text),
+    yearsExperience: estimateYearsExperienceFromResumeText(text),
     skills: extractSkills(text),
     education: extractEducation(lines),
     highlights: extractHighlights(lines),
@@ -611,6 +770,31 @@ function buildHeuristicAnalysis(text: string): ResumeAnalysisResult {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  timeoutLabel: string
+) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`${timeoutLabel}超时，已回退到本地规则`)
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function extractOutputText(payload: unknown) {
@@ -734,34 +918,160 @@ function coerceComposition(value: unknown, fallback: ResumeCompositionItem[]) {
   return parsed.length > 0 ? parsed.slice(0, 4) : fallback
 }
 
-async function generateOpenAIAnalysis(
-  text: string,
+function resolveYearsExperience(aiValue: unknown, fallback: number | null) {
+  if (typeof aiValue !== 'number') {
+    return fallback
+  }
+
+  const normalized = clamp(Math.round(aiValue), 0, 35)
+
+  if (fallback === null) {
+    return normalized
+  }
+
+  // Prefer the local parser when the model estimate is clearly out of band.
+  if (Math.abs(normalized - fallback) >= 6) {
+    return fallback
+  }
+
+  return normalized
+}
+
+function containsProtectedProfileSignal(text: string) {
+  return /(?:\d{1,2}\s*岁|年龄|出生|birth|born|dob)/i.test(text)
+}
+
+function mentionsConflictingYearsExperience(text: string, fallbackYears: number | null) {
+  if (fallbackYears === null) {
+    return false
+  }
+
+  const match = text.match(/(\d{1,2})\s*(?:\+)?\s*(?:年|years?)(?:[^。\n]{0,12})(?:工作经验|实习经验|从业经验|experience)/i)
+
+  if (!match) {
+    return false
+  }
+
+  const mentionedYears = Number(match[1])
+  return Number.isFinite(mentionedYears) && Math.abs(mentionedYears - fallbackYears) >= 2
+}
+
+function hasUnsafeResumeNarrative(text: string, fallbackYears: number | null) {
+  return containsProtectedProfileSignal(text) || mentionsConflictingYearsExperience(text, fallbackYears)
+}
+
+async function generateDashScopeResumeEnhancement(
   fallback: ResumeAnalysisResult
-): Promise<ResumeAnalysisResult | null> {
-  const apiKey = process.env.OPENAI_API_KEY
+): Promise<Partial<ResumeAnalysisResult> | null> {
+  const apiKey = getProviderApiKey()
 
   if (!apiKey) {
     return null
   }
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const parsed = await fetchJsonObjectFromChat({
+    apiKey,
+    model: getResumeAnalysisModel(),
+    timeoutMs: DASHSCOPE_RESUME_ANALYSIS_TIMEOUT_MS,
+    timeoutLabel: 'AI 简历分析',
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You refine resume summaries for recruiting workflows. Return one JSON object only. All user-facing strings must be natural Simplified Chinese. Do not mention age, birth year, graduation year, or infer protected traits. Ground every point only in the provided structured resume data.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          task: 'Refine the recruiter-facing summary and insights only.',
+          constraints: {
+            summary: '1 concise paragraph in Simplified Chinese.',
+            insightsMaxItems: 4,
+            highlightsMaxItems: 4,
+            allowedInsightTypes: ['strength', 'improvement', 'warning'],
+            allowedPriorities: ['high', 'medium', 'low'],
+          },
+          resume: {
+            score: fallback.score,
+            summary: fallback.summary,
+            contact: fallback.contact,
+            profile: fallback.profile,
+            skillAnalysis: fallback.skillAnalysis,
+            insights: fallback.insights,
+            composition: fallback.composition,
+          },
+          output: {
+            summary: 'string',
+            highlights: ['string'],
+            insights: [
+              {
+                type: 'strength | improvement | warning',
+                title: 'string',
+                description: 'string',
+                priority: 'high | medium | low',
+              },
+            ],
+          },
+        }),
+      },
+    ],
+  })
+
+  if (!parsed) {
+    return null
+  }
+
+  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : ''
+  const highlights = coerceStringArray(parsed.highlights).slice(0, 4)
+  const insights = coerceInsights(parsed.insights, fallback.insights).slice(0, 4)
+
+  const insightText = insights
+    .map((item) => `${item.title} ${item.description}`)
+    .join(' ')
+
+  if ((summary && hasUnsafeResumeNarrative(summary, fallback.profile.yearsExperience)) || hasUnsafeResumeNarrative(insightText, fallback.profile.yearsExperience)) {
+    return null
+  }
+
+  return {
+    source: 'openai',
+    summary: summary || fallback.summary,
+    profile: {
+      ...fallback.profile,
+      highlights: highlights.length > 0 ? highlights : fallback.profile.highlights,
+    },
+    insights,
+  }
+}
+
+async function generateOpenAIAnalysis(
+  text: string,
+  fallback: ResumeAnalysisResult
+): Promise<ResumeAnalysisResult | null> {
+  const apiKey = getProviderApiKey()
+
+  if (!apiKey) {
+    return null
+  }
+
+  const response = await fetchWithTimeout(getOpenAIUrl('/responses'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_RESUME_MODEL || 'gpt-5',
+      model: process.env.OPENAI_RESUME_MODEL || getDefaultTextModel(),
       store: false,
       input: [
         {
           role: 'system',
           content:
-            'You analyze resumes for recruiting workflows. Extract only evidence grounded in the resume text. Do not infer protected traits or make hiring decisions. Return concise JSON only.',
+            'You analyze resumes for recruiting workflows. Extract only evidence grounded in the resume text. Do not infer protected traits or make hiring decisions. Return concise JSON only. All user-facing text must be natural Simplified Chinese. Preserve technical terms, company names, product names, and programming languages such as Java, Python, SQL, React, and Next.js in their original form. When estimating yearsExperience, count only actual work or internship experience. Never use birth year, age, graduation year, or school enrollment dates as work experience.',
         },
         {
           role: 'user',
-          content: `Analyze this resume text for intake and screening:\n\n${text.slice(0, 12000)}`,
+          content: `请基于以下简历文本做候选人录入与初筛分析，只提取简历中有明确依据的信息。输出面向用户的字段时请使用自然简体中文，并保留技术名词原文。尤其是 yearsExperience 只能根据工作经历或实习经历估算，不能把出生年份、年龄、教育时间、校园经历时间直接算成工作年限：\n\n${text.slice(0, 8000)}`,
         },
       ],
       text: {
@@ -875,17 +1185,17 @@ async function generateOpenAIAnalysis(
         },
       },
     }),
-  })
+  }, RESUME_ANALYSIS_TIMEOUT_MS, 'AI 简历分析')
 
   if (!response.ok) {
-    throw new Error(`OpenAI request failed with ${response.status}`)
+    throw new Error(`OpenAI 简历分析请求失败：${response.status}`)
   }
 
   const payload = (await response.json()) as unknown
   const outputText = extractOutputText(payload)
 
   if (!outputText) {
-    throw new Error('OpenAI response did not include structured output text')
+    throw new Error('OpenAI 简历分析未返回结构化结果')
   }
 
   const parsed = JSON.parse(outputText) as Record<string, unknown>
@@ -912,10 +1222,7 @@ async function generateOpenAIAnalysis(
         typeof profileValue.currentTitle === 'string'
           ? profileValue.currentTitle
           : fallback.profile.currentTitle,
-      yearsExperience:
-        typeof profileValue.yearsExperience === 'number'
-          ? clamp(Math.round(profileValue.yearsExperience), 0, 35)
-          : fallback.profile.yearsExperience,
+      yearsExperience: resolveYearsExperience(profileValue.yearsExperience, fallback.profile.yearsExperience),
       skills: coerceStringArray(profileValue.skills).slice(0, 8).length
         ? coerceStringArray(profileValue.skills).slice(0, 8)
         : fallback.profile.skills,
@@ -936,7 +1243,7 @@ export async function extractResumeText(buffer: Buffer, fileName: string, mimeTy
   const extension = path.extname(fileName).toLowerCase()
 
   if (extension === '.doc' || mimeType === 'application/msword') {
-    throw new Error('This MVP currently supports PDF, DOCX, TXT, and MD resume parsing. Convert DOC to DOCX or PDF first.')
+    throw new Error('当前版本仅支持解析 PDF、DOCX、TXT 和 MD 简历，请先将 DOC 转为 DOCX 或 PDF。')
   }
 
   if (extension === '.pdf' || mimeType === 'application/pdf') {
@@ -963,7 +1270,24 @@ export async function extractResumeText(buffer: Buffer, fileName: string, mimeTy
 export async function analyzeResumeText(text: string): Promise<ResumeAnalysisResult> {
   const fallback = buildHeuristicAnalysis(text)
 
+  if (!shouldUseAiResumeAnalysis()) {
+    return fallback
+  }
+
   try {
+    if (shouldPreferDashScope()) {
+      const enhanced = await generateDashScopeResumeEnhancement(fallback)
+
+      if (enhanced) {
+        return {
+          ...fallback,
+          ...enhanced,
+          profile: enhanced.profile ?? fallback.profile,
+          insights: enhanced.insights ?? fallback.insights,
+        }
+      }
+    }
+
     const openAIAnalysis = await generateOpenAIAnalysis(text, fallback)
     return openAIAnalysis ?? fallback
   } catch (error) {

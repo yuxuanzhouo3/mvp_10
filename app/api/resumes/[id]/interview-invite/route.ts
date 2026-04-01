@@ -23,19 +23,19 @@ export async function POST(_request: Request, { params }: { params: { id: string
   const record = await getResumeRecordById(params.id)
 
   if (!record) {
-    return NextResponse.json({ error: 'Resume record not found.' }, { status: 404 })
+    return NextResponse.json({ error: '未找到对应的简历记录。' }, { status: 404 })
   }
 
   if (!record.contact.email) {
     return NextResponse.json(
-      { error: 'Candidate email is required before sending an interview invite.' },
+      { error: '发送面试邀请前需要先填写候选人邮箱。' },
       { status: 400 }
     )
   }
 
   if (!canSendInterviewInvite(record.workflow.stage)) {
     return NextResponse.json(
-      { error: 'This candidate is not in a stage that should receive an interview invite.' },
+      { error: '当前候选人所处阶段不适合发送面试邀请。' },
       { status: 400 }
     )
   }
@@ -53,8 +53,8 @@ export async function POST(_request: Request, { params }: { params: { id: string
         outreachStatus: delivery.mode === 'smtp' ? ('contacted' as const) : current.workflow.outreachStatus,
         recommendedNextAction:
           delivery.mode === 'smtp'
-            ? 'Wait for the candidate reply, confirm the interview slot, and continue follow-up in email, WeChat, or Feishu.'
-            : 'Interview invite preview generated. Deliver it manually, then mark the candidate as contacted.',
+            ? '等待候选人回复，确认面试时间，并继续通过邮件、微信或飞书跟进。'
+            : '面试邀请预览稿已生成，请手动发送，并在完成后更新联系状态。',
         lastUpdatedAt: attemptedAt,
       }
       const communication = {
@@ -82,8 +82,8 @@ export async function POST(_request: Request, { params }: { params: { id: string
                 createTimelineEvent({
                   type: 'workflow_updated',
                   actor: 'system',
-                  title: 'Candidate moved to interview stage',
-                  description: 'The recruiter initiated the interview outreach step.',
+                  title: '候选人已推进到面试阶段',
+                  description: '招聘方已启动面试邀请流程。',
                   createdAt: attemptedAt,
                 }),
               ]
@@ -93,12 +93,12 @@ export async function POST(_request: Request, { params }: { params: { id: string
             actor: 'system',
             title:
               delivery.mode === 'smtp'
-                ? 'Interview invite email sent'
-                : 'Interview invite preview generated',
+                ? '面试邀请邮件已发送'
+                : '面试邀请预览稿已生成',
             description:
               delivery.mode === 'smtp'
-                ? 'The platform emailed the candidate with scheduling and opt-in contact options.'
-                : 'SMTP is not configured, so a preview was generated for manual outreach.',
+                ? '系统已向候选人发送包含排期与可选联系方式的面试邀请。'
+                : '当前未配置 SMTP，因此已生成预览稿，需手动发送。',
             createdAt: attemptedAt,
           }),
         ],
@@ -110,7 +110,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
       delivery,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Interview invite failed.'
+    const message = error instanceof Error ? error.message : '面试邀请发送失败。'
 
     const updatedRecord = await updateResumeRecord(params.id, (current) => {
       const communication = {
@@ -133,7 +133,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
           createTimelineEvent({
             type: 'interview_invite_failed',
             actor: 'system',
-            title: 'Interview invite delivery failed',
+            title: '面试邀请发送失败',
             description: message,
             createdAt: attemptedAt,
           }),

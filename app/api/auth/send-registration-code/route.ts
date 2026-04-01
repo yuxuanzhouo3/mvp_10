@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 
-import { createPasswordResetCode, getUserByEmail } from '@/lib/server/auth-store'
+import { createRegistrationVerificationCode } from '@/lib/server/auth-store'
 import { assertCodeSendAllowed, recordCodeSend } from '@/lib/server/code-send-rate-limit'
-import { sendPasswordResetEmail } from '@/lib/server/password-reset-email'
+import { sendRegistrationVerificationEmail } from '@/lib/server/registration-verification-email'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,35 +23,35 @@ export async function POST(request: Request) {
     }
 
     const normalizedEmail = body.email.trim().toLowerCase()
-    const user = await getUserByEmail(normalizedEmail)
+    await assertCodeSendAllowed('register', normalizedEmail)
 
-    if (!user) {
-      return NextResponse.json({
-        message: '如果该邮箱已注册，系统会向该邮箱发送验证码。',
-      })
-    }
+    const { code } = await createRegistrationVerificationCode(normalizedEmail)
+    await recordCodeSend('register', normalizedEmail)
 
-    await assertCodeSendAllowed('reset-password', normalizedEmail)
-
-    const { code } = await createPasswordResetCode(normalizedEmail)
-    await recordCodeSend('reset-password', normalizedEmail)
-
-    const delivery = await sendPasswordResetEmail(normalizedEmail, code)
+    const delivery = await sendRegistrationVerificationEmail(normalizedEmail, code)
 
     return NextResponse.json({
       message:
         delivery.mode === 'preview'
-          ? `邮件服务当前不可用，已切换为预览模式。重置验证码：${code}`
+          ? `邮件服务当前不可用，已切换为预览模式。注册验证码：${code}`
           : '验证码已发送到邮箱，请查收。',
       delivery,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : '发送验证码失败。'
     const cooldownMessage = getCooldownMessage(message)
+    const status =
+      cooldownMessage
+        ? 429
+        : message === 'An account with this email already exists.'
+          ? 400
+          : 500
 
     return NextResponse.json(
-      { error: cooldownMessage || message },
-      { status: cooldownMessage ? 429 : 500 }
+      {
+        error: cooldownMessage || (status === 400 ? '该邮箱已注册，请直接登录。' : message),
+      },
+      { status }
     )
   }
 }

@@ -7,6 +7,8 @@ import { useAuth } from './AuthProvider'
 
 type AuthMode = 'login' | 'register' | 'forgot'
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export function LoginPage() {
   const [mode, setMode] = useState<AuthMode>('login')
   const [email, setEmail] = useState('')
@@ -16,15 +18,18 @@ export function LoginPage() {
   const [newPassword, setNewPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [sendingCode, setSendingCode] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
-  const { login, register, forgotPassword, resetPassword } = useAuth()
+  const { login, register, sendRegistrationCode, forgotPassword, resetPassword } = useAuth()
 
   const isLogin = mode === 'login'
   const isRegister = mode === 'register'
   const isForgot = mode === 'forgot'
+  const canSendCode = EMAIL_PATTERN.test(email.trim())
+  const isBusy = submitting || sendingCode
 
   const resetFeedback = () => {
     setError('')
@@ -34,11 +39,18 @@ export function LoginPage() {
   const switchMode = (nextMode: AuthMode) => {
     setMode(nextMode)
     resetFeedback()
+    setCode('')
+    setPassword('')
+    setNewPassword('')
+
+    if (nextMode !== 'register') {
+      setName('')
+    }
   }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    setLoading(true)
+    setSubmitting(true)
     resetFeedback()
 
     try {
@@ -48,7 +60,7 @@ export function LoginPage() {
       }
 
       if (isRegister) {
-        await register({ email, password, name })
+        await register({ email, password, name, code })
         return
       }
 
@@ -57,6 +69,7 @@ export function LoginPage() {
         code,
         newPassword,
       })
+
       setMessage(resultMessage)
       setPassword('')
       setCode('')
@@ -65,21 +78,29 @@ export function LoginPage() {
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '操作失败，请稍后重试。')
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
   const handleSendCode = async () => {
-    setLoading(true)
+    if (!canSendCode) {
+      setError('请先输入有效的邮箱地址。')
+      return
+    }
+
+    setSendingCode(true)
     resetFeedback()
 
     try {
-      const resultMessage = await forgotPassword(email)
+      const resultMessage = isRegister
+        ? await sendRegistrationCode(email)
+        : await forgotPassword(email)
+
       setMessage(resultMessage)
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : '发送验证码失败。')
     } finally {
-      setLoading(false)
+      setSendingCode(false)
     }
   }
 
@@ -89,7 +110,7 @@ export function LoginPage() {
         <div className="card">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gradient mb-2">求职平台</h1>
-            <p className="text-gray-600">AI 驱动的职位匹配、候选人分析与面试流程平台</p>
+            <p className="text-gray-600">AI 驱动的岗位匹配、候选人分析与面试流程平台</p>
           </div>
 
           <div className="flex rounded-lg bg-gray-100 p-1 mb-6">
@@ -116,7 +137,7 @@ export function LoginPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">姓名</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                  <User className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
                     value={name}
@@ -132,7 +153,7 @@ export function LoginPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">邮箱</label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                <Mail className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                 <input
                   type="email"
                   value={email}
@@ -144,23 +165,49 @@ export function LoginPage() {
               </div>
             </div>
 
+            {isRegister && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">邮箱验证码</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    className="input-field"
+                    placeholder="输入 6 位验证码"
+                    maxLength={6}
+                    required={isRegister}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleSendCode()}
+                    disabled={isBusy || !canSendCode}
+                    className="btn-secondary whitespace-nowrap"
+                  >
+                    {sendingCode ? '发送中...' : '发送验证码'}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">验证码 10 分钟内有效。</p>
+              </div>
+            )}
+
             {(isLogin || isRegister) && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">密码</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                  <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     className="input-field pl-10 pr-10"
                     placeholder={isRegister ? '请输入至少 8 位密码' : '请输入密码'}
-                    required
+                    required={isLogin || isRegister}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((current) => !current)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
@@ -185,10 +232,10 @@ export function LoginPage() {
                     <button
                       type="button"
                       onClick={() => void handleSendCode()}
-                      disabled={loading || !email}
+                      disabled={isBusy || !canSendCode}
                       className="btn-secondary whitespace-nowrap"
                     >
-                      发送验证码
+                      {sendingCode ? '发送中...' : '发送验证码'}
                     </button>
                   </div>
                 </div>
@@ -196,19 +243,19 @@ export function LoginPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">新密码</label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <Lock className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
                     <input
                       type={showNewPassword ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(event) => setNewPassword(event.target.value)}
                       className="input-field pl-10 pr-10"
-                      placeholder="请输入新的密码，至少 8 位"
+                      placeholder="请输入新密码，至少 8 位"
                       required={isForgot}
                     />
                     <button
                       type="button"
                       onClick={() => setShowNewPassword((current) => !current)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
                       {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
@@ -218,24 +265,24 @@ export function LoginPage() {
             )}
 
             {message && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-blue-700 text-sm whitespace-pre-line">{message}</p>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <p className="whitespace-pre-line text-sm text-blue-700">{message}</p>
               </div>
             )}
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <p className="text-red-600 text-sm">{error}</p>
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                <p className="text-sm text-red-600">{error}</p>
               </div>
             )}
 
             <button
               type="submit"
-              disabled={loading}
-              className="btn-primary w-full flex items-center justify-center"
+              disabled={isBusy}
+              className="btn-primary flex w-full items-center justify-center"
             >
-              {loading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+              {submitting ? (
+                <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-white"></div>
               ) : isLogin ? (
                 '登录'
               ) : isRegister ? (
@@ -246,21 +293,21 @@ export function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center space-y-2">
+          <div className="mt-6 space-y-2 text-center">
             {isLogin && (
               <>
                 <p className="text-sm text-gray-600">
                   还没有账号？
                   <button
                     onClick={() => switchMode('register')}
-                    className="text-primary-600 hover:text-primary-700 font-medium ml-1"
+                    className="ml-1 font-medium text-primary-600 hover:text-primary-700"
                   >
                     去注册
                   </button>
                 </p>
                 <button
                   onClick={() => switchMode('forgot')}
-                  className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  className="text-sm font-medium text-primary-600 hover:text-primary-700"
                 >
                   忘记密码？
                 </button>
@@ -272,7 +319,7 @@ export function LoginPage() {
                 已有账号？
                 <button
                   onClick={() => switchMode('login')}
-                  className="text-primary-600 hover:text-primary-700 font-medium ml-1"
+                  className="ml-1 font-medium text-primary-600 hover:text-primary-700"
                 >
                   去登录
                 </button>
@@ -284,7 +331,7 @@ export function LoginPage() {
                 想起密码了？
                 <button
                   onClick={() => switchMode('login')}
-                  className="text-primary-600 hover:text-primary-700 font-medium ml-1"
+                  className="ml-1 font-medium text-primary-600 hover:text-primary-700"
                 >
                   返回登录
                 </button>

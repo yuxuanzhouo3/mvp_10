@@ -1,4 +1,5 @@
 import { getSessionUser } from '@/lib/server/auth-store'
+import { verifyAuthToken } from '@/lib/server/jwt'
 
 export async function requireAuthenticatedUser(request: Request) {
   const authorization = request.headers.get('authorization') ?? ''
@@ -8,11 +9,12 @@ export async function requireAuthenticatedUser(request: Request) {
     throw new Error('Authentication token is missing.')
   }
 
-  const user = await getSessionUser(token)
+  const { sessionToken } = await verifyAuthToken(token)
+  const user = await getSessionUser(sessionToken)
 
   if (!user) {
     throw new Error('Session is invalid or expired.')
   }
 
-  return { user, token }
+  return { user, token, sessionToken }
 }

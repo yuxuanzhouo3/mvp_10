@@ -9,7 +9,8 @@ interface AuthContextType {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  register: (userData: { email: string; password: string; name: string }) => Promise<void>
+  register: (userData: { email: string; password: string; name: string; code: string }) => Promise<void>
+  sendRegistrationCode: (email: string) => Promise<string>
   forgotPassword: (email: string) => Promise<string>
   resetPassword: (payload: {
     email: string
@@ -112,7 +113,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const register = async (userData: { email: string; password: string; name: string }) => {
+  const register = async (userData: {
+    email: string
+    password: string
+    name: string
+    code: string
+  }) => {
     const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: {
@@ -129,6 +135,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.setItem('auth_token', data.token)
     setUser(data.user)
+  }
+
+  const sendRegistrationCode = async (email: string) => {
+    const response = await fetch('/api/auth/send-registration-code', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    })
+
+    const data = (await response.json()) as { message?: string; error?: string }
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to send verification code.')
+    }
+
+    return data.message || 'Verification code sent.'
   }
 
   const forgotPassword = async (email: string) => {
@@ -173,7 +197,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, logout, register, forgotPassword, resetPassword, refreshUser }}
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        register,
+        sendRegistrationCode,
+        forgotPassword,
+        resetPassword,
+        refreshUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

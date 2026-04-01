@@ -32,7 +32,7 @@ export interface AuthSession {
   expiresAt: string
 }
 
-export interface PasswordResetCode {
+export interface OneTimeCodeRecord {
   id: string
   email: string
   codeHash: string
@@ -40,3 +40,7 @@ export interface PasswordResetCode {
   createdAt: string
   expiresAt: string
 }
+
+export interface PasswordResetCode extends OneTimeCodeRecord {}
+
+export interface RegistrationVerificationCode extends OneTimeCodeRecord {}

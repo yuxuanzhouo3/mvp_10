@@ -1,51 +1,49 @@
-import { promises as fs } from 'fs'
 import path from 'path'
 
+import {
+  ensureLocalDir,
+  getCloudDocumentById,
+  listCloudDocuments,
+  putCloudDocument,
+  readLocalJsonFile,
+  withCloudBaseFallback,
+  writeLocalBufferFile,
+  writeLocalJsonFile,
+} from '@/lib/server/cloudbase'
 import { normalizeResumeRecord } from '@/lib/server/resume-defaults'
 import type { ResumeListItem, ResumeRecord } from '@/types/resume'
 
 const DATA_DIR = path.join(process.cwd(), 'data', 'resumes')
 const FILES_DIR = path.join(DATA_DIR, 'files')
 const INDEX_FILE = path.join(DATA_DIR, 'index.json')
+const RESUMES_COLLECTION = 'resumes'
 
 function sanitizeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
-async function ensureStore() {
-  await fs.mkdir(FILES_DIR, { recursive: true })
-}
-
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const content = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(content) as T
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return fallback
-    }
-
-    throw error
-  }
-}
-
-async function writeJsonFile(filePath: string, value: unknown) {
-  await ensureStore()
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-}
-
 async function readResumeRecords() {
-  const records = await readJsonFile<ResumeRecord[]>(INDEX_FILE, [])
+  const records = await readLocalJsonFile<ResumeRecord[]>(INDEX_FILE, [])
   return records.map(normalizeResumeRecord)
 }
 
+async function writeResumeRecords(records: ResumeRecord[]) {
+  await writeLocalJsonFile(INDEX_FILE, records)
+}
+
+function sortResumeRecords(records: ResumeRecord[]) {
+  return [...records].sort((left, right) => {
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  })
+}
+
 export async function saveResumeFile(id: string, fileName: string, buffer: Buffer) {
-  await ensureStore()
+  await ensureLocalDir(FILES_DIR)
 
   const storedFileName = `${id}-${sanitizeFileName(fileName)}`
   const storedFilePath = path.join(FILES_DIR, storedFileName)
 
-  await fs.writeFile(storedFilePath, buffer)
+  await writeLocalBufferFile(storedFilePath, buffer)
 
   return {
     storedFileName,
@@ -54,39 +52,76 @@ export async function saveResumeFile(id: string, fileName: string, buffer: Buffe
 }
 
 export async function listResumeRecords() {
-  const records = await readResumeRecords()
-
-  return records.sort((left, right) => {
-    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-  })
+  return withCloudBaseFallback(
+    'listResumeRecords',
+    async () =>
+      sortResumeRecords((await listCloudDocuments<ResumeRecord>(RESUMES_COLLECTION)).map(normalizeResumeRecord)),
+    async () => sortResumeRecords(await readResumeRecords())
+  )
 }
 
 export async function addResumeRecord(record: ResumeRecord) {
-  const records = await listResumeRecords()
-  records.unshift(record)
-  await writeJsonFile(INDEX_FILE, records)
+  const normalizedRecord = normalizeResumeRecord(record)
+
+  await withCloudBaseFallback(
+    'addResumeRecord',
+    async () => {
+      await putCloudDocument(RESUMES_COLLECTION, normalizedRecord.id, normalizedRecord)
+    },
+    async () => {
+      const records = sortResumeRecords(await readResumeRecords())
+      records.unshift(normalizedRecord)
+      await writeResumeRecords(records)
+    }
+  )
 }
 
 export async function getResumeRecordById(id: string) {
-  const records = await readResumeRecords()
-  return records.find((record) => record.id === id) ?? null
+  return withCloudBaseFallback(
+    'getResumeRecordById',
+    async () => {
+      const record = await getCloudDocumentById<ResumeRecord>(RESUMES_COLLECTION, id)
+      return record ? normalizeResumeRecord(record) : null
+    },
+    async () => {
+      const records = await readResumeRecords()
+      return records.find((record) => record.id === id) ?? null
+    }
+  )
 }
 
 export async function updateResumeRecord(
   id: string,
   updater: (record: ResumeRecord) => ResumeRecord
 ) {
-  const records = await readResumeRecords()
-  const index = records.findIndex((record) => record.id === id)
+  return withCloudBaseFallback(
+    'updateResumeRecord',
+    async () => {
+      const existing = await getCloudDocumentById<ResumeRecord>(RESUMES_COLLECTION, id)
 
-  if (index === -1) {
-    return null
-  }
+      if (!existing) {
+        return null
+      }
 
-  records[index] = updater(records[index])
-  await writeJsonFile(INDEX_FILE, records)
+      const nextRecord = normalizeResumeRecord(updater(normalizeResumeRecord(existing)))
+      await putCloudDocument(RESUMES_COLLECTION, id, nextRecord)
 
-  return records[index]
+      return nextRecord
+    },
+    async () => {
+      const records = await readResumeRecords()
+      const index = records.findIndex((record) => record.id === id)
+
+      if (index === -1) {
+        return null
+      }
+
+      records[index] = updater(records[index])
+      await writeResumeRecords(records)
+
+      return records[index]
+    }
+  )
 }
 
 export function toResumeListItem(record: ResumeRecord): ResumeListItem {

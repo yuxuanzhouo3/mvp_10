@@ -149,8 +149,8 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
         createTimelineEvent({
           type: 'task_created',
           actor: 'recruiter',
-          title: `Task created: ${task.title}`,
-          description: task.description ?? `Channel: ${task.channel}`,
+          title: `已创建任务：${task.title}`,
+          description: task.description ?? `渠道：${task.channel}`,
           createdAt,
         })
       )
@@ -162,7 +162,7 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
         createTimelineEvent({
           type: 'task_updated',
           actor: 'recruiter',
-          title: task.status === 'done' ? `Task completed: ${task.title}` : `Task status updated: ${task.title}`,
+          title: task.status === 'done' ? `任务已完成：${task.title}` : `任务状态已更新：${task.title}`,
           description: `${previous.status} -> ${task.status}`,
           createdAt,
         })
@@ -181,8 +181,8 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
         createTimelineEvent({
           type: 'task_updated',
           actor: 'recruiter',
-          title: `Task updated: ${task.title}`,
-          description: 'Task details were changed.',
+          title: `任务已更新：${task.title}`,
+          description: '任务详情已被修改。',
           createdAt,
         })
       )
@@ -195,8 +195,8 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
         createTimelineEvent({
           type: 'task_updated',
           actor: 'recruiter',
-          title: `Task removed: ${previous.title}`,
-          description: 'The recruiter removed this task from the workflow board.',
+          title: `任务已移除：${previous.title}`,
+          description: '招聘方已将该任务从看板中移除。',
           createdAt,
         })
       )
@@ -213,7 +213,7 @@ export async function GET(
   const record = await getResumeRecordById(params.id)
 
   if (!record) {
-    return NextResponse.json({ error: 'Resume record not found.' }, { status: 404 })
+    return NextResponse.json({ error: '未找到对应的简历记录。' }, { status: 404 })
   }
 
   return NextResponse.json(record)
@@ -260,7 +260,7 @@ export async function PATCH(
       })
 
       if (nextContact.email && !EMAIL_PATTERN.test(nextContact.email)) {
-        throw new Error('Please enter a valid email address.')
+        throw new Error('请输入有效的邮箱地址。')
       }
 
       const hasCompleteContact = Boolean(nextContact.email && nextContact.phone)
@@ -302,8 +302,8 @@ export async function PATCH(
           createTimelineEvent({
             type: 'contact_updated',
             actor: 'recruiter',
-            title: 'Candidate contact details updated',
-            description: 'Recruiter corrected or enriched parsed contact fields.',
+            title: '候选人联系方式已更新',
+            description: '招聘方修正或补充了系统解析出的联系信息。',
             createdAt: now,
           })
         )
@@ -314,8 +314,8 @@ export async function PATCH(
           createTimelineEvent({
             type: 'workflow_updated',
             actor: 'recruiter',
-            title: `Workflow updated to ${nextStage}`,
-            description: `Review: ${nextReviewStatus}, outreach: ${nextOutreachStatus}.`,
+            title: `流程已更新为：${nextStage}`,
+            description: `评审状态：${nextReviewStatus}，联系进度：${nextOutreachStatus}。`,
             createdAt: now,
           })
         )
@@ -326,8 +326,8 @@ export async function PATCH(
           createTimelineEvent({
             type: 'note_added',
             actor: 'recruiter',
-            title: 'Recruiter notes updated',
-            description: nextNotes.trim() ? nextNotes.trim().slice(0, 160) : 'Notes were cleared.',
+            title: '招聘备注已更新',
+            description: nextNotes.trim() ? nextNotes.trim().slice(0, 160) : '备注已清空。',
             createdAt: now,
           })
         )
@@ -362,12 +362,12 @@ export async function PATCH(
     })
 
     if (!updatedRecord) {
-      return NextResponse.json({ error: 'Resume record not found.' }, { status: 404 })
+      return NextResponse.json({ error: '未找到对应的简历记录。' }, { status: 404 })
     }
 
     return NextResponse.json(updatedRecord)
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Resume update failed.'
+    const message = error instanceof Error ? error.message : '简历更新失败。'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

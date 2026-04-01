@@ -1,10 +1,17 @@
-import { promises as fs } from 'fs'
 import path from 'path'
 
+import {
+  getCloudDocumentById,
+  listCloudDocuments,
+  putCloudDocument,
+  readLocalJsonFile,
+  withCloudBaseFallback,
+  writeLocalJsonFile,
+} from '@/lib/server/cloudbase'
 import type { CheckoutSession, PaymentPlan, PaymentPlanId } from '@/types/billing'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'billing')
-const CHECKOUTS_FILE = path.join(DATA_DIR, 'checkouts.json')
+const CHECKOUTS_FILE = path.join(process.cwd(), 'data', 'billing', 'checkouts.json')
+const BILLING_CHECKOUTS_COLLECTION = 'billing_checkouts'
 
 export const PAYMENT_PLANS: PaymentPlan[] = [
   {
@@ -33,26 +40,12 @@ export const PAYMENT_PLANS: PaymentPlan[] = [
   },
 ]
 
-async function ensureStore() {
-  await fs.mkdir(DATA_DIR, { recursive: true })
+async function readCheckoutSessions() {
+  return readLocalJsonFile<CheckoutSession[]>(CHECKOUTS_FILE, [])
 }
 
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const content = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(content) as T
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return fallback
-    }
-
-    throw error
-  }
-}
-
-async function writeJsonFile(filePath: string, value: unknown) {
-  await ensureStore()
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+async function writeCheckoutSessions(checkouts: CheckoutSession[]) {
+  await writeLocalJsonFile(CHECKOUTS_FILE, checkouts)
 }
 
 export function getPaymentPlan(planId: PaymentPlanId) {
@@ -60,7 +53,14 @@ export function getPaymentPlan(planId: PaymentPlanId) {
 }
 
 export async function listCheckoutSessions() {
-  return readJsonFile<CheckoutSession[]>(CHECKOUTS_FILE, [])
+  return withCloudBaseFallback(
+    'listCheckoutSessions',
+    async () =>
+      listCloudDocuments<CheckoutSession>(BILLING_CHECKOUTS_COLLECTION, {
+        orderBy: { field: 'createdAt', direction: 'desc' },
+      }),
+    async () => readCheckoutSessions()
+  )
 }
 
 export async function createCheckoutSession(input: {
@@ -89,8 +89,16 @@ export async function createCheckoutSession(input: {
     externalUrl: input.externalUrl ?? null,
   }
 
-  checkouts.unshift(session)
-  await writeJsonFile(CHECKOUTS_FILE, checkouts)
+  await withCloudBaseFallback(
+    'createCheckoutSession',
+    async () => {
+      await putCloudDocument(BILLING_CHECKOUTS_COLLECTION, session.id, session)
+    },
+    async () => {
+      checkouts.unshift(session)
+      await writeCheckoutSessions(checkouts)
+    }
+  )
 
   return session
 }
@@ -99,15 +107,31 @@ export async function updateCheckoutSession(
   id: string,
   updater: (session: CheckoutSession) => CheckoutSession
 ) {
-  const checkouts = await listCheckoutSessions()
-  const index = checkouts.findIndex((session) => session.id === id)
+  return withCloudBaseFallback(
+    'updateCheckoutSession',
+    async () => {
+      const existing = await getCloudDocumentById<CheckoutSession>(BILLING_CHECKOUTS_COLLECTION, id)
 
-  if (index === -1) {
-    return null
-  }
+      if (!existing) {
+        return null
+      }
 
-  checkouts[index] = updater(checkouts[index])
-  await writeJsonFile(CHECKOUTS_FILE, checkouts)
+      const nextSession = updater(existing)
+      await putCloudDocument(BILLING_CHECKOUTS_COLLECTION, id, nextSession)
+      return nextSession
+    },
+    async () => {
+      const checkouts = await readCheckoutSessions()
+      const index = checkouts.findIndex((session) => session.id === id)
 
-  return checkouts[index]
+      if (index === -1) {
+        return null
+      }
+
+      checkouts[index] = updater(checkouts[index])
+      await writeCheckoutSessions(checkouts)
+
+      return checkouts[index]
+    }
+  )
 }

@@ -26,15 +26,15 @@ export async function POST(request: Request) {
     const uploaded = formData.get('resume')
 
     if (!(uploaded instanceof File)) {
-      return NextResponse.json({ error: 'No resume file was uploaded.' }, { status: 400 })
+      return NextResponse.json({ error: '未检测到上传的简历文件。' }, { status: 400 })
     }
 
     if (uploaded.size === 0) {
-      return NextResponse.json({ error: 'Uploaded file is empty.' }, { status: 400 })
+      return NextResponse.json({ error: '上传的文件为空。' }, { status: 400 })
     }
 
     if (uploaded.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: 'Resume file must be 10MB or smaller.' }, { status: 400 })
+      return NextResponse.json({ error: '简历文件大小不能超过 10MB。' }, { status: 400 })
     }
 
     const id = crypto.randomUUID()
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
     if (!extractedText) {
       return NextResponse.json(
-        { error: 'The resume could not be parsed into text. Try a text-based PDF or DOCX.' },
+        { error: '无法将简历解析为文本，请尝试文本型 PDF 或 DOCX 文件。' },
         { status: 400 }
       )
     }
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Resume upload failed.'
+    const message = error instanceof Error ? error.message : '简历上传失败。'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

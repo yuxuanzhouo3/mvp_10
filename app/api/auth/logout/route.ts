@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
   try {
-    const { token } = await requireAuthenticatedUser(request)
-    await deleteSession(token)
+    const { sessionToken } = await requireAuthenticatedUser(request)
+    await deleteSession(sessionToken)
     return NextResponse.json({ success: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Logout failed.'

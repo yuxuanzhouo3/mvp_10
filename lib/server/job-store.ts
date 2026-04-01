@@ -1,10 +1,17 @@
-import { promises as fs } from 'fs'
 import path from 'path'
 
+import {
+  getCloudDocumentById,
+  listCloudDocuments,
+  putCloudDocument,
+  readLocalJsonFile,
+  withCloudBaseFallback,
+  writeLocalJsonFile,
+} from '@/lib/server/cloudbase'
 import type { JobRecord, JobStatus } from '@/types/job'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'jobs')
-const INDEX_FILE = path.join(DATA_DIR, 'index.json')
+const INDEX_FILE = path.join(process.cwd(), 'data', 'jobs', 'index.json')
+const JOBS_COLLECTION = 'jobs'
 
 const DEFAULT_JOBS: JobRecord[] = [
   {
@@ -129,27 +136,7 @@ const DEFAULT_JOBS: JobRecord[] = [
   },
 ]
 
-async function ensureStore() {
-  await fs.mkdir(DATA_DIR, { recursive: true })
-}
-
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const content = await fs.readFile(filePath, 'utf8')
-    return JSON.parse(content) as T
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return fallback
-    }
-
-    throw error
-  }
-}
-
-async function writeJsonFile(filePath: string, value: unknown) {
-  await ensureStore()
-  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
-}
+let cloudDefaultJobsSeeded = false
 
 function normalizeJob(record: JobRecord): JobRecord {
   return {
@@ -166,17 +153,43 @@ function normalizeJob(record: JobRecord): JobRecord {
 }
 
 async function readJobs() {
-  const records = await readJsonFile<JobRecord[]>(INDEX_FILE, DEFAULT_JOBS)
+  const records = await readLocalJsonFile<JobRecord[]>(INDEX_FILE, DEFAULT_JOBS)
   return records.map(normalizeJob)
 }
 
 async function writeJobs(records: JobRecord[]) {
-  await writeJsonFile(INDEX_FILE, records)
+  await writeLocalJsonFile(INDEX_FILE, records)
+}
+
+function sortJobs(records: JobRecord[]) {
+  return [...records].sort((left, right) => new Date(right.postedAt).getTime() - new Date(left.postedAt).getTime())
+}
+
+async function ensureCloudDefaultJobs() {
+  if (cloudDefaultJobsSeeded) {
+    return
+  }
+
+  const existingJobs = await listCloudDocuments<JobRecord>(JOBS_COLLECTION, { limit: 1 })
+
+  if (existingJobs.length === 0) {
+    for (const job of DEFAULT_JOBS.map(normalizeJob)) {
+      await putCloudDocument(JOBS_COLLECTION, job.id, job)
+    }
+  }
+
+  cloudDefaultJobsSeeded = true
 }
 
 export async function listJobs() {
-  const records = await readJobs()
-  return records.sort((left, right) => new Date(right.postedAt).getTime() - new Date(left.postedAt).getTime())
+  return withCloudBaseFallback(
+    'listJobs',
+    async () => {
+      await ensureCloudDefaultJobs()
+      return sortJobs((await listCloudDocuments<JobRecord>(JOBS_COLLECTION)).map(normalizeJob))
+    },
+    async () => sortJobs(await readJobs())
+  )
 }
 
 export async function listPublishedJobs() {
@@ -185,25 +198,63 @@ export async function listPublishedJobs() {
 }
 
 export async function addJob(record: JobRecord) {
-  const records = await listJobs()
-  records.unshift(normalizeJob(record))
-  await writeJobs(records)
+  const normalizedRecord = normalizeJob(record)
+
+  await withCloudBaseFallback(
+    'addJob',
+    async () => {
+      await ensureCloudDefaultJobs()
+      await putCloudDocument(JOBS_COLLECTION, normalizedRecord.id, normalizedRecord)
+    },
+    async () => {
+      const records = sortJobs(await readJobs())
+      records.unshift(normalizedRecord)
+      await writeJobs(records)
+    }
+  )
 }
 
 export async function getJobById(id: string) {
-  const records = await readJobs()
-  return records.find((record) => record.id === id) ?? null
+  return withCloudBaseFallback(
+    'getJobById',
+    async () => {
+      await ensureCloudDefaultJobs()
+      const record = await getCloudDocumentById<JobRecord>(JOBS_COLLECTION, id)
+      return record ? normalizeJob(record) : null
+    },
+    async () => {
+      const records = await readJobs()
+      return records.find((record) => record.id === id) ?? null
+    }
+  )
 }
 
 export async function updateJob(id: string, updater: (record: JobRecord) => JobRecord) {
-  const records = await readJobs()
-  const index = records.findIndex((record) => record.id === id)
+  return withCloudBaseFallback(
+    'updateJob',
+    async () => {
+      await ensureCloudDefaultJobs()
+      const existing = await getCloudDocumentById<JobRecord>(JOBS_COLLECTION, id)
 
-  if (index === -1) {
-    return null
-  }
+      if (!existing) {
+        return null
+      }
 
-  records[index] = normalizeJob(updater(records[index]))
-  await writeJobs(records)
-  return records[index]
+      const nextRecord = normalizeJob(updater(normalizeJob(existing)))
+      await putCloudDocument(JOBS_COLLECTION, id, nextRecord)
+      return nextRecord
+    },
+    async () => {
+      const records = await readJobs()
+      const index = records.findIndex((record) => record.id === id)
+
+      if (index === -1) {
+        return null
+      }
+
+      records[index] = normalizeJob(updater(records[index]))
+      await writeJobs(records)
+      return records[index]
+    }
+  )
 }

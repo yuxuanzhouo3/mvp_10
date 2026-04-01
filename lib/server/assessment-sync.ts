@@ -51,16 +51,29 @@ function recommendationToApplicationStage(
   return 'interview'
 }
 
+function recommendationLabel(recommendation: AssessmentRecommendation | null) {
+  switch (recommendation) {
+    case 'strong_yes':
+      return '强烈推荐'
+    case 'yes':
+      return '推荐'
+    case 'no':
+      return '不推荐'
+    default:
+      return '待定'
+  }
+}
+
 function buildAssessmentNote(record: AssessmentRecord) {
   const score = record.summary.overallScore ?? 0
-  const recommendation = record.summary.recommendation ?? 'pending'
+  const recommendation = recommendationLabel(record.summary.recommendation)
   return [
-    `[Assessment] ${record.title}`,
-    `Mode: ${record.mode}`,
-    `Score: ${score}%`,
-    `Recommendation: ${recommendation}`,
-    `Summary: ${record.summary.summary}`,
-    `Next step: ${record.summary.nextStep}`,
+    `[测评] ${record.title}`,
+    `模式：${record.mode === 'written' ? '笔试' : '面试'}`,
+    `得分：${score}%`,
+    `建议：${recommendation}`,
+    `总结：${record.summary.summary}`,
+    `下一步：${record.summary.nextStep}`,
   ].join('\n')
 }
 
@@ -83,10 +96,10 @@ export async function syncAssessmentOutcome(record: AssessmentRecord) {
           notes: note,
           recommendedNextAction:
             recommendation === 'no'
-              ? 'Close the candidate loop politely or keep them in reserve.'
+              ? '建议礼貌结束当前流程，或转入人才储备池。'
               : record.mode === 'written'
-                ? 'Schedule an interview and carry the assessment summary into the next round.'
-                : 'Prepare hiring decision, offer review, or final stakeholder alignment.',
+                ? '安排面试，并将测评结论带入下一轮沟通。'
+                : '准备录用决策、Offer 评审或最终用人对齐。',
           lastUpdatedAt: now,
         }
 
@@ -103,14 +116,14 @@ export async function syncAssessmentOutcome(record: AssessmentRecord) {
             createTimelineEvent({
               type: 'note_added',
               actor: 'system',
-              title: `Assessment scored: ${record.title}`,
-              description: `${record.summary.recommendation ?? 'pending'} · ${record.summary.overallScore ?? 0}%`,
+              title: `测评已完成评分：${record.title}`,
+              description: `${recommendationLabel(record.summary.recommendation)} · ${record.summary.overallScore ?? 0}%`,
               createdAt: now,
             }),
             createTimelineEvent({
               type: 'workflow_updated',
               actor: 'system',
-              title: `Candidate moved to ${nextStage}`,
+              title: `候选人已推进到：${nextStage}`,
               description: buildRecommendedNextAction(current.contact),
               createdAt: now,
             }),
