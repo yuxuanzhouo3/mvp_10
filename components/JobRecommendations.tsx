@@ -328,6 +328,12 @@ export function JobRecommendations() {
   }
 
   async function withdrawApplication(application: ApplicationRecord) {
+    const token = getStoredAuthToken()
+    if (!token) {
+      setError('Please sign in again before updating your application.')
+      return
+    }
+
     try {
       setActingJobId(application.jobId)
       setError('')
@@ -335,7 +341,10 @@ export function JobRecommendations() {
 
       const response = await fetch(`/api/applications/${application.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ stage: 'withdrawn' }),
       })
 

@@ -74,6 +74,13 @@ export function Settings() {
     return 'Free'
   }, [user])
 
+  const roleLabel = useMemo(() => {
+    if (!user) return 'Guest'
+    if (user.role === 'recruiter') return 'Recruiter'
+    if (user.role === 'admin') return 'Admin'
+    return 'Candidate'
+  }, [user])
+
   async function loadPlans() {
     try {
       const response = await fetch('/api/billing/plans', { cache: 'no-store' })
@@ -232,7 +239,7 @@ export function Settings() {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Profile Information</h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    Current plan: {currentPlanLabel} - Billing: {user?.billingStatus || 'inactive'}
+                    Role: {roleLabel} - Current plan: {currentPlanLabel} - Billing: {user?.billingStatus || 'inactive'}
                   </p>
                 </div>
                 <button

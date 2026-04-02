@@ -54,6 +54,12 @@ function normalizeAnswer(answer: AssessmentAnswer): AssessmentAnswer {
 function normalizeAssessmentRecord(record: AssessmentRecord): AssessmentRecord {
   return {
     ...record,
+    kind: record.kind ?? 'practice',
+    applicationId: typeof record.applicationId === 'string' ? record.applicationId : null,
+    candidateUserId: typeof record.candidateUserId === 'string' ? record.candidateUserId : null,
+    recruiterUserId: typeof record.recruiterUserId === 'string' ? record.recruiterUserId : null,
+    recruiterName: typeof record.recruiterName === 'string' ? record.recruiterName : null,
+    assignedAt: typeof record.assignedAt === 'string' ? record.assignedAt : null,
     answers: record.answers.map(normalizeAnswer),
   }
 }

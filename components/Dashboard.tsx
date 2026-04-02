@@ -1,49 +1,71 @@
 'use client'
 
-import { useState } from 'react'
-import { useAuth } from './AuthProvider'
-import { Navigation } from './Navigation'
-import { JobRecommendations } from './JobRecommendations'
-import { OperationsCenter } from './OperationsCenter'
-import { ResumeAnalysis } from './ResumeAnalysis'
-import { InterviewSimulator } from './InterviewSimulator'
-import { Analytics } from './Analytics'
-import { Settings } from './Settings'
-import { TabType } from '../types/tabs'
+import { useEffect, useState } from 'react'
 
- 
+import { useAuth } from './AuthProvider'
+import { Analytics } from './Analytics'
+import { CandidateAssessmentCenter } from './CandidateAssessmentCenter'
+import { CandidateJobBoard } from './CandidateJobBoard'
+import { CandidateResumeCenter } from './CandidateResumeCenter'
+import { Navigation } from './Navigation'
+import { RecruiterAIScreeningPanel } from './RecruiterAIScreeningPanel'
+import { RecruiterCandidateHub } from './RecruiterCandidateHub'
+import { RecruiterJobSetup } from './RecruiterJobSetup'
+import { RecruiterOverview } from './RecruiterOverview'
+import { Settings } from './Settings'
+import type { TabType } from '@/types/tabs'
 
 export function Dashboard() {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard')
+  const isRecruiterView = user?.role === 'recruiter' || user?.role === 'admin'
+  const [activeTab, setActiveTab] = useState<TabType>(isRecruiterView ? 'jobs' : 'dashboard')
 
-  const renderContent = () => {
+  useEffect(() => {
+    setActiveTab(isRecruiterView ? 'jobs' : 'dashboard')
+  }, [isRecruiterView, user?.role])
+
+  const renderRecruiterContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <JobRecommendations />
+        return <RecruiterOverview />
+      case 'jobs':
+        return <RecruiterJobSetup />
+      case 'candidates':
+        return <RecruiterCandidateHub />
+      case 'screening':
+        return <RecruiterAIScreeningPanel />
+      case 'settings':
+        return <Settings />
+      default:
+        return <RecruiterJobSetup />
+    }
+  }
+
+  const renderCandidateContent = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <CandidateJobBoard />
       case 'resume':
-        return <ResumeAnalysis />
-      case 'operations':
-        return <OperationsCenter />
+        return <CandidateResumeCenter />
       case 'interview':
-        return <InterviewSimulator />
+        return <CandidateAssessmentCenter />
       case 'analytics':
         return <Analytics />
       case 'settings':
         return <Settings />
       default:
-        return <JobRecommendations />
+        return <CandidateJobBoard />
     }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} user={user} />
-      <main className="pt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {renderContent()}
+      <main className="pt-28 lg:pt-20">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          {isRecruiterView ? renderRecruiterContent() : renderCandidateContent()}
         </div>
       </main>
     </div>
   )
-} 
+}

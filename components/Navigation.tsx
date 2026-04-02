@@ -1,175 +1,125 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { BarChart3, Briefcase, ChevronDown, FileSearch, FileText, LayoutDashboard, LogOut, Settings, Sparkles, User, Users } from 'lucide-react'
+
 import { useAuth } from './AuthProvider'
-import { TabType } from '../types/tabs'
-import { 
-  Briefcase, 
-  Building2,
-  FileText, 
-  Video, 
-  BarChart3, 
-  Settings, 
-  LogOut, 
-  User,
-  Bell,
-  Search
-} from 'lucide-react'
+import type { AppUser } from '@/types/auth'
+import type { TabType } from '@/types/tabs'
 
 interface NavigationProps {
   activeTab: TabType
   onTabChange: (tab: TabType) => void
-  user: any
+  user: AppUser | null
 }
 
 export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
   const { logout } = useAuth()
   const [showUserMenu, setShowUserMenu] = useState(false)
-  const [showNotifications, setShowNotifications] = useState(false)
 
-  const navigation: { name: string; icon: any; tab: TabType }[] = [
-    { name: 'Dashboard', icon: Briefcase, tab: 'dashboard' },
-    { name: 'Resume Analysis', icon: FileText, tab: 'resume' },
-    { name: 'Operations', icon: Building2, tab: 'operations' },
-    { name: 'Assessment Studio', icon: Video, tab: 'interview' },
-    { name: 'Analytics', icon: BarChart3, tab: 'analytics' },
-    { name: 'Settings', icon: Settings, tab: 'settings' },
-  ]
+  const navigation = useMemo(() => {
+    if (user?.role === 'recruiter' || user?.role === 'admin') {
+      return [
+        { name: '概览', icon: LayoutDashboard, tab: 'dashboard' as const },
+        { name: '岗位管理', icon: Briefcase, tab: 'jobs' as const },
+        { name: '候选人', icon: Users, tab: 'candidates' as const },
+        { name: 'AI 初筛', icon: FileSearch, tab: 'screening' as const },
+        { name: '设置', icon: Settings, tab: 'settings' as const },
+      ]
+    }
+
+    return [
+      { name: '岗位推荐', icon: Sparkles, tab: 'dashboard' as const },
+      { name: '我的简历', icon: FileText, tab: 'resume' as const },
+      { name: 'AI 面试', icon: FileSearch, tab: 'interview' as const },
+      { name: '分析', icon: BarChart3, tab: 'analytics' as const },
+      { name: '设置', icon: Settings, tab: 'settings' as const },
+    ]
+  }, [user?.role])
+
+  const roleLabel = user?.role === 'recruiter' ? '招聘方' : user?.role === 'admin' ? '管理员' : '求职者'
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo and Brand */}
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-gradient">
-                JobSearch Platform
-              </h1>
-            </div>
+    <nav className="fixed left-0 right-0 top-0 z-50 border-b border-slate-200 bg-white/92 shadow-sm backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white">
+            <Briefcase className="h-5 w-5" />
           </div>
-
-          {/* Navigation Links */}
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-4">
-              {navigation.map((item) => {
-                const Icon = item.icon
-                return (
-                  <button
-                    key={item.name}
-                    onClick={() => onTabChange(item.tab)}
-                    className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      activeTab === item.tab
-                        ? 'bg-primary-100 text-primary-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 mr-2" />
-                    {item.name}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Right side - Search, Notifications, User Menu */}
-          <div className="flex items-center space-x-4">
-            {/* Search */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <input
-                type="text"
-                placeholder="Search jobs..."
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Notifications */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <Bell className="h-5 w-5" />
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                  3
-                </span>
-              </button>
-
-              {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
-                  <div className="px-4 py-2 border-b border-gray-100">
-                    <h3 className="text-sm font-medium text-gray-900">Notifications</h3>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto">
-                    <div className="px-4 py-3 hover:bg-gray-50">
-                      <p className="text-sm text-gray-900">New job match: Senior ML Engineer at Google</p>
-                      <p className="text-xs text-gray-500 mt-1">2 minutes ago</p>
-                    </div>
-                    <div className="px-4 py-3 hover:bg-gray-50">
-                      <p className="text-sm text-gray-900">Resume analysis completed</p>
-                      <p className="text-xs text-gray-500 mt-1">1 hour ago</p>
-                    </div>
-                    <div className="px-4 py-3 hover:bg-gray-50">
-                      <p className="text-sm text-gray-900">Interview practice session available</p>
-                      <p className="text-xs text-gray-500 mt-1">3 hours ago</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* User Menu */}
-            <div className="relative">
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <div className="h-8 w-8 bg-primary-600 rounded-full flex items-center justify-center">
-                  <User className="h-4 w-4 text-white" />
-                </div>
-                <span className="hidden md:block text-sm font-medium">
-                  {user?.name || 'User'}
-                </span>
-              </button>
-
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
-                  <div className="px-4 py-2 border-b border-gray-100">
-                    <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-                    <p className="text-xs text-gray-500">{user?.email}</p>
-                  </div>
-                  <button
-                    onClick={logout}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center"
-                  >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
+          <div>
+            <h1 className="text-sm font-semibold text-slate-950 sm:text-base">AI 招聘工作台</h1>
+            <p className="text-xs text-slate-500">{user?.role === 'recruiter' ? '招聘方视角' : '求职者视角'}</p>
           </div>
         </div>
-      </div>
 
-      {/* Mobile Navigation */}
-      <div className="md:hidden">
-        <div className="px-2 pt-2 pb-3 space-y-1">
+        <div className="hidden items-center gap-1 lg:flex">
           {navigation.map((item) => {
             const Icon = item.icon
             return (
               <button
                 key={item.name}
                 onClick={() => onTabChange(item.tab)}
-                className={`flex items-center px-3 py-2 rounded-md text-base font-medium w-full ${
-                  activeTab === item.tab
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition ${
+                  activeTab === item.tab ? 'bg-primary-100 text-primary-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
-                <Icon className="h-5 w-5 mr-3" />
-                {item.name}
+                <Icon className="h-4 w-4" />
+                <span>{item.name}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 sm:block">
+            {roleLabel}
+          </div>
+
+          <div className="relative">
+            <button
+              onClick={() => setShowUserMenu((current) => !current)}
+              className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-600 text-white">
+                <User className="h-4 w-4" />
+              </div>
+              <div className="hidden text-left sm:block">
+                <p className="text-sm font-medium text-slate-900">{user?.name || 'User'}</p>
+                <p className="text-xs text-slate-500">{roleLabel}</p>
+              </div>
+              <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
+            </button>
+
+            {showUserMenu && (
+              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
+                <div className="rounded-xl bg-slate-50 px-3 py-3">
+                  <p className="text-sm font-medium text-slate-900">{user?.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{user?.email}</p>
+                </div>
+                <button onClick={logout} className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100">
+                  <LogOut className="h-4 w-4" />
+                  <span>退出登录</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 px-3 py-2 lg:hidden">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {navigation.map((item) => {
+            const Icon = item.icon
+            return (
+              <button
+                key={item.name}
+                onClick={() => onTabChange(item.tab)}
+                className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                  activeTab === item.tab ? 'bg-primary-100 text-primary-700' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{item.name}</span>
               </button>
             )
           })}
@@ -177,4 +127,4 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
       </div>
     </nav>
   )
-} 
+}

@@ -19,6 +19,7 @@ export async function POST(request: Request) {
       password?: unknown
       name?: unknown
       code?: unknown
+      role?: unknown
     }
 
     if (typeof body.name !== 'string' || body.name.trim().length < 2) {
@@ -35,6 +36,10 @@ export async function POST(request: Request) {
 
     if (typeof body.code !== 'string' || !/^\d{6}$/.test(body.code.trim())) {
       return NextResponse.json({ error: '请输入 6 位邮箱验证码。' }, { status: 400 })
+    }
+
+    if (body.role !== 'candidate' && body.role !== 'recruiter') {
+      return NextResponse.json({ error: '请选择注册身份：求职者或招聘方。' }, { status: 400 })
     }
 
     const normalizedEmail = body.email.trim().toLowerCase()
@@ -54,6 +59,7 @@ export async function POST(request: Request) {
       email: normalizedEmail,
       password: body.password,
       name: body.name,
+      role: body.role,
     })
     const session = await createSession(user.id)
     const token = await createAuthToken(user.id, session.token)

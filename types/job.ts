@@ -7,6 +7,9 @@ export interface JobRecord {
   id: string
   createdAt: string
   updatedAt: string
+  ownerUserId?: string | null
+  ownerName?: string | null
+  ownerEmail?: string | null
   title: string
   company: string
   companyTagline: string

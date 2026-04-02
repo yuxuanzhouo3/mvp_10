@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Briefcase, Loader2, Plus, Save, Users } from 'lucide-react'
 
+import { getStoredAuthToken } from './AuthProvider'
 import type { ApplicationRecord, ApplicationStage } from '@/types/application'
 import type { JobLocationMode, JobRecord, JobSeniority, JobStatus, JobType } from '@/types/job'
 
@@ -93,6 +94,19 @@ function upsertApplication(records: ApplicationRecord[], next: ApplicationRecord
   return updated.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
 }
 
+function getAuthorizedHeaders(includeJson = false) {
+  const token = getStoredAuthToken()
+
+  if (!token) {
+    throw new Error('Please sign in again to manage recruiter workflows.')
+  }
+
+  return {
+    ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
+    Authorization: `Bearer ${token}`,
+  }
+}
+
 export function JobBoardManager() {
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [applications, setApplications] = useState<ApplicationRecord[]>([])
@@ -180,7 +194,10 @@ export function JobBoardManager() {
     try {
       setLoading(true)
       setError('')
-      const response = await fetch('/api/jobs', { cache: 'no-store' })
+      const response = await fetch('/api/jobs?scope=mine', {
+        cache: 'no-store',
+        headers: getAuthorizedHeaders(),
+      })
       const data = (await response.json()) as JobRecord[] | { error?: string }
 
       if (!response.ok || !Array.isArray(data)) {
@@ -201,6 +218,7 @@ export function JobBoardManager() {
       setApplicationsLoading(true)
       const response = await fetch(`/api/applications?jobId=${encodeURIComponent(jobId)}`, {
         cache: 'no-store',
+        headers: getAuthorizedHeaders(),
       })
       const data = (await response.json()) as ApplicationRecord[] | { error?: string }
 
@@ -232,7 +250,7 @@ export function JobBoardManager() {
 
       const response = await fetch('/api/jobs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthorizedHeaders(true),
         body: JSON.stringify({
           ...form,
           industries: splitCsv(form.industries),
@@ -272,7 +290,7 @@ export function JobBoardManager() {
 
       const response = await fetch(`/api/jobs/${selectedJob.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthorizedHeaders(true),
         body: JSON.stringify({
           ...form,
           industries: splitCsv(form.industries),
@@ -307,7 +325,7 @@ export function JobBoardManager() {
 
       const response = await fetch(`/api/applications/${applicationId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthorizedHeaders(true),
         body: JSON.stringify(payload),
       })
 

@@ -1,6 +1,7 @@
 export type AssessmentMode = 'written' | 'interview'
 export type AssessmentStatus = 'draft' | 'in_progress' | 'submitted' | 'scored'
 export type AssessmentDifficulty = 'easy' | 'medium' | 'hard'
+export type AssessmentKind = 'practice' | 'recruiter_assigned'
 export type AssessmentQuestionCategory =
   | 'technical'
   | 'problem_solving'
@@ -62,16 +63,22 @@ export interface AssessmentRecord {
   createdAt: string
   updatedAt: string
   title: string
+  kind: AssessmentKind
   mode: AssessmentMode
   status: AssessmentStatus
   source: AssessmentSource
   generatedFrom: string
+  applicationId: string | null
   jobId: string | null
   jobTitle: string | null
   company: string | null
   resumeId: string | null
+  candidateUserId: string | null
   candidateName: string | null
   candidateEmail: string | null
+  recruiterUserId: string | null
+  recruiterName: string | null
+  assignedAt: string | null
   questions: AssessmentQuestion[]
   answers: AssessmentAnswer[]
   summary: AssessmentSummary

@@ -8,6 +8,7 @@ import {
   withCloudBaseFallback,
   writeLocalJsonFile,
 } from '@/lib/server/cloudbase'
+import { normalizeCityLocation } from '@/lib/location'
 import type { JobRecord, JobStatus } from '@/types/job'
 
 const INDEX_FILE = path.join(process.cwd(), 'data', 'jobs', 'index.json')
@@ -23,7 +24,7 @@ const DEFAULT_JOBS: JobRecord[] = [
     companyTagline: 'Build reliable model serving and evaluation pipelines.',
     status: 'published',
     contactEmail: 'ai-platform@tencent.example.com',
-    location: 'Shenzhen, China',
+    location: '深圳市',
     locationMode: 'hybrid',
     salaryMin: 320000,
     salaryMax: 480000,
@@ -47,7 +48,7 @@ const DEFAULT_JOBS: JobRecord[] = [
     companyTagline: 'Use experimentation and analytics to shape product decisions.',
     status: 'published',
     contactEmail: 'growth-hiring@bytedance.example.com',
-    location: 'Shanghai, China',
+    location: '上海市',
     locationMode: 'onsite',
     salaryMin: 220000,
     salaryMax: 320000,
@@ -71,7 +72,7 @@ const DEFAULT_JOBS: JobRecord[] = [
     companyTagline: 'Ship LLM-powered product experiences for global users.',
     status: 'published',
     contactEmail: 'llm-hiring@minimax.example.com',
-    location: 'Beijing, China',
+    location: '北京市',
     locationMode: 'hybrid',
     salaryMin: 380000,
     salaryMax: 560000,
@@ -95,7 +96,7 @@ const DEFAULT_JOBS: JobRecord[] = [
     companyTagline: 'Create polished interfaces for AI-native products.',
     status: 'published',
     contactEmail: 'frontend-hiring@moonshot.example.com',
-    location: 'Remote, China',
+    location: '远程',
     locationMode: 'remote',
     salaryMin: 260000,
     salaryMax: 420000,
@@ -119,7 +120,7 @@ const DEFAULT_JOBS: JobRecord[] = [
     companyTagline: 'Raise the quality bar for AI and cloud product delivery.',
     status: 'published',
     contactEmail: 'qa-hiring@baidu.example.com',
-    location: 'Guangzhou, China',
+    location: '广州市',
     locationMode: 'onsite',
     salaryMin: 180000,
     salaryMax: 260000,
@@ -143,8 +144,12 @@ function normalizeJob(record: JobRecord): JobRecord {
     ...record,
     createdAt: record.createdAt ?? record.postedAt,
     updatedAt: record.updatedAt ?? record.postedAt,
+    ownerUserId: record.ownerUserId ?? null,
+    ownerName: record.ownerName ?? null,
+    ownerEmail: record.ownerEmail ?? null,
     status: (record.status ?? 'published') as JobStatus,
     contactEmail: record.contactEmail ?? null,
+    location: normalizeCityLocation(record.location) ?? '远程',
     requiredSkills: Array.from(new Set(record.requiredSkills.map((item) => item.trim()).filter(Boolean))),
     preferredSkills: Array.from(new Set(record.preferredSkills.map((item) => item.trim()).filter(Boolean))),
     industries: Array.from(new Set(record.industries.map((item) => item.trim()).filter(Boolean))),
@@ -195,6 +200,11 @@ export async function listJobs() {
 export async function listPublishedJobs() {
   const records = await listJobs()
   return records.filter((record) => record.status === 'published')
+}
+
+export async function listJobsByOwner(ownerUserId: string) {
+  const records = await listJobs()
+  return records.filter((record) => record.ownerUserId === ownerUserId)
 }
 
 export async function addJob(record: JobRecord) {

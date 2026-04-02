@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 
-import { addJob, listJobs, listPublishedJobs } from '@/lib/server/job-store'
+import {
+  isAuthErrorMessage,
+  isPermissionErrorMessage,
+  requireUserRoles,
+} from '@/lib/server/auth-helpers'
+import { addJob, listJobs, listJobsByOwner, listPublishedJobs } from '@/lib/server/job-store'
+import { normalizeCityLocation } from '@/lib/location'
 import type { JobLocationMode, JobRecord, JobSeniority, JobStatus, JobType } from '@/types/job'
 
 export const runtime = 'nodejs'
@@ -48,14 +54,34 @@ function normalizeNullableString(value: unknown) {
 }
 
 export async function GET(request: Request) {
-  const url = new URL(request.url)
-  const mode = url.searchParams.get('mode')
-  const records = mode === 'published' ? await listPublishedJobs() : await listJobs()
-  return NextResponse.json(records)
+  try {
+    const url = new URL(request.url)
+    const mode = url.searchParams.get('mode')
+    const scope = url.searchParams.get('scope')
+
+    if (scope === 'mine') {
+      const { user } = await requireUserRoles(request, ['recruiter', 'admin'])
+      const records = user.role === 'admin' ? await listJobs() : await listJobsByOwner(user.id)
+      return NextResponse.json(records)
+    }
+
+    if (mode === 'published') {
+      return NextResponse.json(await listPublishedJobs())
+    }
+
+    const { user } = await requireUserRoles(request, ['recruiter', 'admin'])
+    const records = user.role === 'admin' ? await listJobs() : await listJobsByOwner(user.id)
+    return NextResponse.json(records)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load jobs.'
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
+  }
 }
 
 export async function POST(request: Request) {
   try {
+    const { user } = await requireUserRoles(request, ['recruiter', 'admin'])
     const body = (await request.json()) as Record<string, unknown>
 
     if (typeof body.title !== 'string' || !body.title.trim()) {
@@ -95,18 +121,21 @@ export async function POST(request: Request) {
       id: crypto.randomUUID(),
       createdAt: now,
       updatedAt: now,
+      ownerUserId: user.id,
+      ownerName: user.name,
+      ownerEmail: user.email,
       title: body.title.trim(),
       company: body.company.trim(),
       companyTagline: typeof body.companyTagline === 'string' ? body.companyTagline.trim() : '',
       status,
-      contactEmail: normalizeNullableString(body.contactEmail),
-      location: typeof body.location === 'string' && body.location.trim() ? body.location.trim() : 'Remote',
+      contactEmail: normalizeNullableString(body.contactEmail) ?? user.email,
+      location: normalizeCityLocation(typeof body.location === 'string' ? body.location : null) ?? '远程',
       locationMode: body.locationMode,
       salaryMin: Number.isFinite(salaryMin) ? Math.max(0, Math.round(salaryMin)) : 0,
       salaryMax: Number.isFinite(salaryMax) ? Math.max(0, Math.round(salaryMax)) : 0,
       currency: body.currency === 'USD' ? 'USD' : 'CNY',
       type: body.type,
-      postedAt: status === 'published' ? now : now,
+      postedAt: now,
       industries: normalizeStringArray(body.industries),
       requiredSkills: normalizeStringArray(body.requiredSkills),
       preferredSkills: normalizeStringArray(body.preferredSkills),
@@ -120,6 +149,7 @@ export async function POST(request: Request) {
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create job.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

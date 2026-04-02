@@ -128,6 +128,9 @@ export interface CandidateTimelineEvent {
 
 export interface ResumeRecord extends ResumeAnalysisResult {
   id: string
+  ownerUserId: string | null
+  ownerName: string | null
+  ownerEmail: string | null
   fileName: string
   mimeType: string
   fileSize: number

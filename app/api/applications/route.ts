@@ -1,23 +1,31 @@
 import { NextResponse } from 'next/server'
 
-import { requireAuthenticatedUser } from '@/lib/server/auth-helpers'
-import { findApplicationByUserAndJob, listApplications, listApplicationsByJobId, listApplicationsByUserId, addApplication, updateApplication } from '@/lib/server/application-store'
+import {
+  addApplication,
+  findApplicationByUserAndJob,
+  listApplications,
+  listApplicationsByJobId,
+  listApplicationsByUserId,
+  updateApplication,
+} from '@/lib/server/application-store'
+import {
+  isAuthErrorMessage,
+  isPermissionErrorMessage,
+  requireAuthenticatedUser,
+  requireUserRoles,
+} from '@/lib/server/auth-helpers'
 import { findBestResumeForUser } from '@/lib/server/job-matching'
-import { getJobById } from '@/lib/server/job-store'
-import { listResumeRecords } from '@/lib/server/resume-store'
-import type { ApplicationRecord, ApplicationStage } from '@/types/application'
+import { getJobById, listJobsByOwner } from '@/lib/server/job-store'
+import { listResumeRecordsByOwner } from '@/lib/server/resume-store'
+import type { ApplicationRecord } from '@/types/application'
+import type { AppUser, UserRole } from '@/types/auth'
+import type { JobRecord } from '@/types/job'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const STAGES: ApplicationStage[] = ['applied', 'screening', 'interview', 'offer', 'hired', 'rejected', 'withdrawn']
-
-function isStage(value: unknown): value is ApplicationStage {
-  return typeof value === 'string' && STAGES.includes(value as ApplicationStage)
-}
-
-function isAuthError(message: string) {
-  return message === 'Authentication token is missing.' || message === 'Session is invalid or expired.'
+function canManageJob(user: Pick<AppUser, 'id' | 'role'>, job: JobRecord) {
+  return user.role === 'admin' || !job.ownerUserId || job.ownerUserId === user.id
 }
 
 export async function GET(request: Request) {
@@ -32,19 +40,34 @@ export async function GET(request: Request) {
       return NextResponse.json(records)
     }
 
+    const { user } = await requireUserRoles(request, ['recruiter', 'admin'])
+
     if (jobId) {
-      const records = await listApplicationsByJobId(jobId)
-      return NextResponse.json(records)
+      const job = await getJobById(jobId)
+
+      if (!job) {
+        return NextResponse.json({ error: 'Job not found.' }, { status: 404 })
+      }
+
+      if (!canManageJob(user, job)) {
+        return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
+      }
+
+      return NextResponse.json(await listApplicationsByJobId(jobId))
     }
 
+    if (user.role === 'admin') {
+      return NextResponse.json(await listApplications())
+    }
+
+    const jobs = await listJobsByOwner(user.id)
+    const jobIds = new Set(jobs.map((job) => job.id))
     const records = await listApplications()
-    return NextResponse.json(records)
+    return NextResponse.json(records.filter((record) => jobIds.has(record.jobId)))
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load applications.'
-    return NextResponse.json(
-      { error: message },
-      { status: isAuthError(message) ? 401 : 500 }
-    )
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }
 
@@ -56,6 +79,10 @@ export async function POST(request: Request) {
       matchScore?: unknown
     }
 
+    if (user.role !== 'candidate') {
+      return NextResponse.json({ error: 'Only candidates can apply for jobs.' }, { status: 403 })
+    }
+
     if (typeof body.jobId !== 'string' || !body.jobId.trim()) {
       return NextResponse.json({ error: 'Job id is required.' }, { status: 400 })
     }
@@ -65,22 +92,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Published job not found.' }, { status: 404 })
     }
 
+    const resumes = await listResumeRecordsByOwner(user.id)
+    const bestResume = findBestResumeForUser(user, resumes)
+
+    if (!bestResume) {
+      return NextResponse.json({ error: 'Please upload your resume before applying.' }, { status: 400 })
+    }
+
     const existing = await findApplicationByUserAndJob(user.id, job.id)
     const now = new Date().toISOString()
+    const nextMatchScore = typeof body.matchScore === 'number' ? Math.round(body.matchScore) : 0
 
     if (existing) {
       const reactivated = await updateApplication(existing.id, (record) => ({
         ...record,
         stage: 'applied',
         updatedAt: now,
-        matchScore: typeof body.matchScore === 'number' ? Math.round(body.matchScore) : record.matchScore,
+        resumeId: bestResume.id,
+        matchScore: nextMatchScore || record.matchScore,
       }))
 
       return NextResponse.json(reactivated)
     }
 
-    const resumes = await listResumeRecords()
-    const bestResume = findBestResumeForUser(user, resumes)
     const record: ApplicationRecord = {
       id: crypto.randomUUID(),
       createdAt: now,
@@ -88,12 +122,12 @@ export async function POST(request: Request) {
       userId: user.id,
       userName: user.name,
       userEmail: user.email,
-      resumeId: bestResume?.id ?? null,
+      resumeId: bestResume.id,
       jobId: job.id,
       jobTitle: job.title,
       company: job.company,
       stage: 'applied',
-      matchScore: typeof body.matchScore === 'number' ? Math.round(body.matchScore) : 0,
+      matchScore: nextMatchScore,
       notes: '',
     }
 
@@ -101,9 +135,7 @@ export async function POST(request: Request) {
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create application.'
-    return NextResponse.json(
-      { error: message },
-      { status: isAuthError(message) ? 401 : 500 }
-    )
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

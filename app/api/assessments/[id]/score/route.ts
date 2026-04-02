@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server'
 
+import { canAccessAssessmentRecord } from '@/lib/server/assessment-access'
 import { evaluateAssessmentRecord } from '@/lib/server/assessment-engine'
 import { syncAssessmentOutcome } from '@/lib/server/assessment-sync'
 import { getAssessmentRecordById, updateAssessmentRecord } from '@/lib/server/assessment-store'
+import {
+  isAuthErrorMessage,
+  isPermissionErrorMessage,
+  requireAuthenticatedUser,
+} from '@/lib/server/auth-helpers'
 import type { AssessmentAnswer } from '@/types/assessment'
 
 export const runtime = 'nodejs'
@@ -12,10 +18,7 @@ function isAnswerArray(value: unknown): value is Array<Record<string, unknown>> 
   return Array.isArray(value)
 }
 
-function normalizeAnswers(
-  rawAnswers: Array<Record<string, unknown>>,
-  existingAnswers: AssessmentAnswer[]
-) {
+function normalizeAnswers(rawAnswers: Array<Record<string, unknown>>, existingAnswers: AssessmentAnswer[]) {
   const existingMap = new Map(existingAnswers.map((answer) => [answer.questionId, answer]))
 
   return rawAnswers
@@ -29,10 +32,7 @@ function normalizeAnswers(
       return {
         questionId: item.questionId as string,
         answer: typeof item.answer === 'string' ? item.answer : existing?.answer ?? '',
-        transcript:
-          typeof item.transcript === 'string'
-            ? item.transcript
-            : existing?.transcript ?? null,
+        transcript: typeof item.transcript === 'string' ? item.transcript : existing?.transcript ?? null,
         audioAsset: rawAudioAsset
           ? {
               fileName:
@@ -69,10 +69,15 @@ function normalizeAnswers(
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
+    const { user } = await requireAuthenticatedUser(request)
     const existing = await getAssessmentRecordById(params.id)
 
     if (!existing) {
-      return NextResponse.json({ error: '未找到对应的评估记录。' }, { status: 404 })
+      return NextResponse.json({ error: 'Assessment not found.' }, { status: 404 })
+    }
+
+    if (!canAccessAssessmentRecord(user, existing)) {
+      return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
     }
 
     const body = (await request.json()) as {
@@ -90,7 +95,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const evaluation = await evaluateAssessmentRecord(
       existing,
       answers,
-      typeof body.sessionDurationSeconds === 'number' ? Math.max(0, Math.round(body.sessionDurationSeconds)) : existing.summary.sessionDurationSeconds
+      typeof body.sessionDurationSeconds === 'number'
+        ? Math.max(0, Math.round(body.sessionDurationSeconds))
+        : existing.summary.sessionDurationSeconds
     )
 
     const updated = await updateAssessmentRecord(params.id, (record) => ({
@@ -103,14 +110,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }))
 
     if (!updated) {
-      return NextResponse.json({ error: '未找到对应的评估记录。' }, { status: 404 })
+      return NextResponse.json({ error: 'Assessment not found.' }, { status: 404 })
     }
 
     await syncAssessmentOutcome(updated)
-
     return NextResponse.json(updated)
   } catch (error) {
-    const message = error instanceof Error ? error.message : '评估评分失败。'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Failed to score assessment.'
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

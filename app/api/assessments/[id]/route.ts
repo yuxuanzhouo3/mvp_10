@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 
+import { canAccessAssessmentRecord } from '@/lib/server/assessment-access'
 import { getAssessmentRecordById, updateAssessmentRecord } from '@/lib/server/assessment-store'
+import {
+  isAuthErrorMessage,
+  isPermissionErrorMessage,
+  requireAuthenticatedUser,
+} from '@/lib/server/auth-helpers'
 import type {
   AssessmentAnswer,
   AssessmentDifficulty,
@@ -42,10 +48,7 @@ function isQuestionDifficulty(value: unknown): value is AssessmentDifficulty {
   return typeof value === 'string' && QUESTION_DIFFICULTIES.includes(value as AssessmentDifficulty)
 }
 
-function normalizeAnswers(
-  rawAnswers: Array<Record<string, unknown>>,
-  previousAnswers: AssessmentAnswer[]
-) {
+function normalizeAnswers(rawAnswers: Array<Record<string, unknown>>, previousAnswers: AssessmentAnswer[]) {
   const previousMap = new Map(previousAnswers.map((answer) => [answer.questionId, answer]))
 
   return rawAnswers
@@ -59,10 +62,7 @@ function normalizeAnswers(
       return {
         questionId: item.questionId as string,
         answer: typeof item.answer === 'string' ? item.answer : previous?.answer ?? '',
-        transcript:
-          typeof item.transcript === 'string'
-            ? item.transcript
-            : previous?.transcript ?? null,
+        transcript: typeof item.transcript === 'string' ? item.transcript : previous?.transcript ?? null,
         audioAsset: rawAudioAsset
           ? {
               fileName:
@@ -88,10 +88,7 @@ function normalizeAnswers(
               storedFileName: null,
               uploadedAt: null,
             },
-        submittedAt:
-          typeof item.submittedAt === 'string'
-            ? item.submittedAt
-            : previous?.submittedAt ?? null,
+        submittedAt: typeof item.submittedAt === 'string' ? item.submittedAt : previous?.submittedAt ?? null,
         score: previous?.score ?? null,
         feedback: previous?.feedback ?? null,
         strengths: previous?.strengths ?? [],
@@ -100,10 +97,7 @@ function normalizeAnswers(
     })
 }
 
-function normalizeQuestions(
-  rawQuestions: Array<Record<string, unknown>>,
-  previousQuestions: AssessmentQuestion[]
-) {
+function normalizeQuestions(rawQuestions: Array<Record<string, unknown>>, previousQuestions: AssessmentQuestion[]) {
   const previousMap = new Map(previousQuestions.map((question) => [question.id, question]))
 
   return rawQuestions
@@ -140,10 +134,7 @@ function normalizeQuestions(
     .filter((question) => question.prompt.length > 0 && question.idealAnswer.length > 0)
 }
 
-function buildAnswersForQuestions(
-  questions: AssessmentQuestion[],
-  previousAnswers: AssessmentAnswer[]
-) {
+function buildAnswersForQuestions(questions: AssessmentQuestion[], previousAnswers: AssessmentAnswer[]) {
   const previousMap = new Map(previousAnswers.map((answer) => [answer.questionId, answer]))
 
   return questions.map((question) => {
@@ -173,18 +164,40 @@ function buildAnswersForQuestions(
   })
 }
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const record = await getAssessmentRecordById(params.id)
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const { user } = await requireAuthenticatedUser(request)
+    const record = await getAssessmentRecordById(params.id)
 
-  if (!record) {
-    return NextResponse.json({ error: '未找到对应的评估记录。' }, { status: 404 })
+    if (!record) {
+      return NextResponse.json({ error: 'Assessment not found.' }, { status: 404 })
+    }
+
+    if (!canAccessAssessmentRecord(user, record)) {
+      return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
+    }
+
+    return NextResponse.json(record)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load assessment.'
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
-
-  return NextResponse.json(record)
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
+    const { user } = await requireAuthenticatedUser(request)
+    const existing = await getAssessmentRecordById(params.id)
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Assessment not found.' }, { status: 404 })
+    }
+
+    if (!canAccessAssessmentRecord(user, existing)) {
+      return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
+    }
+
     const body = (await request.json()) as {
       answers?: unknown
       questions?: unknown
@@ -194,24 +207,25 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       generatedFrom?: unknown
     }
 
+    const allowQuestionEditing = user.role !== 'candidate'
     const updated = await updateAssessmentRecord(params.id, (record) => {
-      const nextQuestions = isQuestionArray(body.questions)
-        ? normalizeQuestions(body.questions, record.questions)
-        : record.questions
-      const questionsUpdated = isQuestionArray(body.questions) && nextQuestions.length > 0
+      const nextQuestions =
+        allowQuestionEditing && isQuestionArray(body.questions)
+          ? normalizeQuestions(body.questions, record.questions)
+          : record.questions
+      const questionsUpdated = allowQuestionEditing && isQuestionArray(body.questions) && nextQuestions.length > 0
       const incomingAnswers = isAnswerArray(body.answers)
         ? normalizeAnswers(body.answers, record.answers)
         : record.answers
-      const nextAnswers = questionsUpdated
-        ? buildAnswersForQuestions(nextQuestions, incomingAnswers)
-        : incomingAnswers
+      const nextAnswers = questionsUpdated ? buildAnswersForQuestions(nextQuestions, incomingAnswers) : incomingAnswers
 
       return {
         ...record,
         updatedAt: new Date().toISOString(),
-        title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : record.title,
+        title:
+          allowQuestionEditing && typeof body.title === 'string' && body.title.trim() ? body.title.trim() : record.title,
         generatedFrom:
-          typeof body.generatedFrom === 'string' && body.generatedFrom.trim()
+          allowQuestionEditing && typeof body.generatedFrom === 'string' && body.generatedFrom.trim()
             ? body.generatedFrom.trim()
             : record.generatedFrom,
         status: questionsUpdated ? 'draft' : isStatus(body.status) ? body.status : record.status,
@@ -222,8 +236,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
               ...record.summary,
               overallScore: null,
               recommendation: null,
-              summary: '题目已替换为练习题库内容，可以继续填写答案后重新提交评分。',
-              nextStep: '先完成这套新的练习题，再生成新的评估结论。',
+              summary: '题目已更新，请继续完成本次测评。',
+              nextStep: '完成全部题目后提交，系统会重新生成评分结果。',
               completedAt: null,
               sessionDurationSeconds:
                 typeof body.sessionDurationSeconds === 'number'
@@ -247,12 +261,13 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     })
 
     if (!updated) {
-      return NextResponse.json({ error: '未找到对应的评估记录。' }, { status: 404 })
+      return NextResponse.json({ error: 'Assessment not found.' }, { status: 404 })
     }
 
     return NextResponse.json(updated)
   } catch (error) {
-    const message = error instanceof Error ? error.message : '更新评估失败。'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Failed to update assessment.'
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

@@ -34,8 +34,18 @@ function inferExperienceYears(experienceLevel: string) {
 }
 
 export function findBestResumeForUser(user: AppUser, resumes: ResumeRecord[]) {
+  const exactOwner = resumes.find((resume) => resume.ownerUserId === user.id)
+  if (exactOwner) {
+    return exactOwner
+  }
+
   const normalizedEmail = normalizeText(user.email)
   const normalizedName = normalizeText(user.name)
+
+  const ownerEmail = resumes.find((resume) => normalizeText(resume.ownerEmail) === normalizedEmail)
+  if (ownerEmail) {
+    return ownerEmail
+  }
 
   const exactEmail = resumes.find((resume) => normalizeText(resume.contact.email) === normalizedEmail)
   if (exactEmail) {
@@ -158,23 +168,23 @@ function buildReasons(profile: CandidateMatchingProfile, job: JobRecord, breakdo
   const reasons: string[] = []
 
   if (matchedSkills.length > 0) {
-    reasons.push(`Matched skills: ${matchedSkills.slice(0, 3).join(', ')}`)
+    reasons.push(`已命中的核心技能：${matchedSkills.slice(0, 3).join('、')}`)
   }
 
   if (breakdown.location >= 88) {
-    reasons.push(`Location fit is strong for ${job.locationMode} work in ${job.location}`)
+    reasons.push(`地点匹配度较高，适合 ${job.location} 的${job.locationMode === 'remote' ? '远程' : job.locationMode === 'hybrid' ? '混合办公' : '现场'}岗位`)
   }
 
   if (breakdown.experience >= 85) {
-    reasons.push(`Experience level is aligned with the ${job.seniority} hiring bar`)
+    reasons.push(`当前经验和岗位所需的 ${job.seniority} 级别较为匹配`)
   }
 
   if (profile.industries.some((industry) => job.industries.some((item) => normalizeText(item).includes(normalizeText(industry))))) {
-    reasons.push(`Industry preference overlaps with ${job.industries.join(', ')}`)
+    reasons.push(`行业偏好与岗位所在方向有重合：${job.industries.join('、')}`)
   }
 
   if (missingSkills.length > 0) {
-    reasons.push(`Top skill gap to close: ${missingSkills[0]}`)
+    reasons.push(`当前最值得补齐的技能：${missingSkills[0]}`)
   }
 
   return reasons.slice(0, 4)
@@ -182,14 +192,14 @@ function buildReasons(profile: CandidateMatchingProfile, job: JobRecord, breakdo
 
 function buildPersonalizedAdvice(matchScore: number, missingSkills: string[], job: JobRecord) {
   if (matchScore >= 88) {
-    return `High-priority role. Tailor your resume toward ${job.requiredSkills.slice(0, 2).join(' and ')} before applying.`
+    return `这是优先投递岗位。建议把简历重点往 ${job.requiredSkills.slice(0, 2).join('、')} 上靠，再去投递会更稳。`
   }
 
   if (missingSkills.length > 0) {
-    return `Promising match. Strengthen or explicitly mention ${missingSkills.slice(0, 2).join(' and ')} to improve your odds.`
+    return `整体匹配不错。建议在简历里补强或明确写出 ${missingSkills.slice(0, 2).join('、')}，会更有竞争力。`
   }
 
-  return 'Keep this role in your shortlist and compare it against other nearby matches.'
+  return '建议先加入重点关注列表，再和其他相近岗位一起比较后决定是否投递。'
 }
 
 function buildRecommendation(profile: CandidateMatchingProfile, job: JobRecord): JobRecommendation {
@@ -244,10 +254,10 @@ export function buildJobRecommendationResponse(user: AppUser, resume: ResumeReco
 
   const bestFocus =
     recommendations[0]?.matchScore >= 88
-      ? `Prioritize ${recommendations[0].job.title} at ${recommendations[0].job.company}.`
+      ? `优先关注 ${recommendations[0].job.company} 的 ${recommendations[0].job.title}。`
       : topSkillGap
-        ? `Improve ${topSkillGap} coverage to unlock stronger matches.`
-        : 'Keep comparing roles and update your profile signals.'
+        ? `优先补齐 ${topSkillGap}，能解锁更多高匹配岗位。`
+        : '继续对比岗位，同时持续更新你的简历和求职信号。'
 
   return {
     profile,

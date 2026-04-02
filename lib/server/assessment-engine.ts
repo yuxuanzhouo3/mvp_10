@@ -21,7 +21,8 @@ import {
 
 const ASSESSMENT_GENERATION_TIMEOUT_MS = 6000
 const ASSESSMENT_SCORING_TIMEOUT_MS = 12000
-const DASHSCOPE_ASSESSMENT_GENERATION_TIMEOUT_MS = 5500
+const DASHSCOPE_ASSESSMENT_GENERATION_TIMEOUT_MS = 15000
+const DASHSCOPE_ASSESSMENT_SCORING_TIMEOUT_MS = 15000
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
@@ -39,6 +40,10 @@ function shouldUseAiAssessmentGeneration() {
   return process.env.ENABLE_AI_ASSESSMENT_GENERATION?.trim() === '1'
 }
 
+function canUseAiAssessmentGeneration() {
+  return shouldUseAiAssessmentGeneration() && Boolean(getProviderApiKey())
+}
+
 function trimEnvValue(value: string | undefined) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
@@ -51,6 +56,10 @@ function getAssessmentGenerationModel() {
     trimEnvValue(process.env.OPENAI_ASSESSMENT_MODEL) ||
     getDefaultTextModel()
   )
+}
+
+function getAssessmentScoringModel() {
+  return trimEnvValue(process.env.OPENAI_ASSESSMENT_MODEL) || getDefaultTextModel()
 }
 
 function estimateAnswerUnits(text: string) {
@@ -170,26 +179,6 @@ function stripListMarker(value: string) {
 
 function containsCjkText(value: string) {
   return /[\u4e00-\u9fff]/.test(value)
-}
-
-function buildIdealAnswer(question: {
-  expectedPoints: string[]
-  category: AssessmentQuestionCategory
-  prompt: string
-}) {
-  const lead =
-    question.category === 'technical'
-      ? '优秀回答应体现清晰的技术判断'
-      : question.category === 'problem_solving'
-        ? '优秀回答应体现结构化拆解与推进能力'
-        : question.category === 'communication'
-          ? '优秀回答应体现表达清晰、共识推进和风险说明'
-          : question.category === 'role_fit'
-            ? '优秀回答应体现岗位匹配度与动机'
-            : '优秀回答应体现清晰背景、关键动作和结果复盘'
-
-  const points = dedupe(question.expectedPoints.map(stripListMarker)).slice(0, 5)
-  return `${lead}，并覆盖 ${points.join('、')}。`
 }
 
 function buildHeuristicQuestions(job: JobRecord | null, resume: ResumeRecord | null, mode: AssessmentRecord['mode']) {
@@ -416,14 +405,14 @@ async function generateOpenAIQuestions(
 
       return questionTemplate(
         crypto.randomUUID(),
-        item.prompt,
+        item.prompt.trim(),
         item.category,
         item.difficulty,
         item.expectedPoints.filter((value): value is string => typeof value === 'string'),
-        item.idealAnswer
+        item.idealAnswer.trim()
       )
     })
-    .filter((item): item is AssessmentQuestion => item !== null)
+    .filter((item): item is AssessmentQuestion => item !== null && item.prompt.length > 0 && item.idealAnswer.length > 0)
 
   if (questions.length !== 5) {
     return null
@@ -476,7 +465,15 @@ async function generateDashScopeQuestions(
             categories: ['technical', 'problem_solving', 'behavioral', 'communication', 'role_fit'],
             difficulties: ['easy', 'medium', 'hard'],
             expectedPointsRange: '3-5 short bullet items per question',
-            outputFields: ['title', 'generatedFrom', 'questions.prompt', 'questions.category', 'questions.difficulty', 'questions.expectedPoints'],
+            outputFields: [
+              'title',
+              'generatedFrom',
+              'questions.prompt',
+              'questions.category',
+              'questions.difficulty',
+              'questions.expectedPoints',
+              'questions.idealAnswer',
+            ],
           },
           job: job
             ? {
@@ -511,6 +508,7 @@ async function generateDashScopeQuestions(
     .map((item) => {
       if (
         typeof item.prompt !== 'string' ||
+        typeof item.idealAnswer !== 'string' ||
         (item.category !== 'technical' &&
           item.category !== 'problem_solving' &&
           item.category !== 'behavioral' &&
@@ -533,17 +531,18 @@ async function generateDashScopeQuestions(
         return null
       }
 
+      const idealAnswer = item.idealAnswer.trim()
+      if (!idealAnswer) {
+        return null
+      }
+
       return questionTemplate(
         crypto.randomUUID(),
         item.prompt.trim(),
         item.category,
         item.difficulty,
         expectedPoints,
-        buildIdealAnswer({
-          prompt: item.prompt,
-          category: item.category,
-          expectedPoints,
-        })
+        idealAnswer
       )
     })
     .filter((item): item is AssessmentQuestion => item !== null)
@@ -569,10 +568,18 @@ async function generateDashScopeQuestions(
 export async function createAssessmentDraft(
   job: JobRecord | null,
   resume: ResumeRecord | null,
-  mode: AssessmentRecord['mode']
+  mode: AssessmentRecord['mode'],
+  options?: {
+    requireAi?: boolean
+  }
 ) {
   const summary = roleSummary(job, resume)
   const fallbackQuestions = buildHeuristicQuestions(job, resume, mode)
+  const requireAi = options?.requireAi === true
+
+  if (requireAi && !canUseAiAssessmentGeneration()) {
+    throw new Error('当前 AI 出题不可用，请检查模型配置或稍后重试。')
+  }
 
   if (shouldUseAiAssessmentGeneration()) {
     try {
@@ -588,8 +595,16 @@ export async function createAssessmentDraft(
         return generated
       }
     } catch (error) {
+      if (requireAi) {
+        throw error
+      }
+
       console.error('Falling back to heuristic assessment generation:', error)
     }
+  }
+
+  if (requireAi) {
+    throw new Error('AI 出题失败，请稍后重试。')
   }
 
   return {
@@ -631,6 +646,118 @@ function scoreSingleAnswer(question: AssessmentQuestion, answer: string) {
   }
 }
 
+function buildScoringPayload(record: AssessmentRecord, answers: AssessmentAnswer[]) {
+  return {
+    title: record.title,
+    mode: record.mode,
+    questions: record.questions.map((question) => ({
+      id: question.id,
+      prompt: question.prompt,
+      category: question.category,
+      maxScore: question.maxScore,
+      expectedPoints: question.expectedPoints,
+      answer: getEffectiveAnswerText(
+        answers.find((answer) => answer.questionId === question.id) ?? { answer: '', transcript: null }
+      ),
+    })),
+  }
+}
+
+function parseAiScoringResult(parsed: Record<string, unknown>) {
+  if (
+    !Array.isArray(parsed.answers) ||
+    !isObject(parsed.rubric) ||
+    typeof parsed.summary !== 'string' ||
+    typeof parsed.nextStep !== 'string' ||
+    (parsed.recommendation !== 'strong_yes' &&
+      parsed.recommendation !== 'yes' &&
+      parsed.recommendation !== 'hold' &&
+      parsed.recommendation !== 'no')
+  ) {
+    return null
+  }
+
+  const answerMap = new Map(
+    parsed.answers
+      .filter((item): item is Record<string, unknown> => isObject(item))
+      .filter((item) => typeof item.questionId === 'string')
+      .map((item) => [
+        item.questionId,
+        {
+          score: typeof item.score === 'number' ? clamp(Math.round(item.score), 0, 20) : 0,
+          feedback: typeof item.feedback === 'string' ? item.feedback : '',
+          strengths: Array.isArray(item.strengths)
+            ? item.strengths.filter((value): value is string => typeof value === 'string').slice(0, 3)
+            : [],
+          gaps: Array.isArray(item.gaps)
+            ? item.gaps.filter((value): value is string => typeof value === 'string').slice(0, 3)
+            : [],
+        },
+      ])
+  )
+
+  const rubric = parsed.rubric
+
+  return {
+    summary: parsed.summary,
+    recommendation: parsed.recommendation,
+    nextStep: parsed.nextStep,
+    rubric: {
+      technical: typeof rubric.technical === 'number' ? clamp(Math.round(rubric.technical), 0, 100) : 0,
+      communication: typeof rubric.communication === 'number' ? clamp(Math.round(rubric.communication), 0, 100) : 0,
+      structuredThinking:
+        typeof rubric.structuredThinking === 'number'
+          ? clamp(Math.round(rubric.structuredThinking), 0, 100)
+          : 0,
+      roleFit: typeof rubric.roleFit === 'number' ? clamp(Math.round(rubric.roleFit), 0, 100) : 0,
+    } satisfies AssessmentRubric,
+    answerMap,
+  }
+}
+
+async function scoreWithDashScope(record: AssessmentRecord, answers: AssessmentAnswer[]) {
+  const apiKey = getProviderApiKey()
+
+  if (!apiKey) {
+    return null
+  }
+
+  const parsed = await fetchJsonObjectFromChat({
+    apiKey,
+    model: getAssessmentScoringModel(),
+    timeoutMs: DASHSCOPE_ASSESSMENT_SCORING_TIMEOUT_MS,
+    timeoutLabel: 'AI 评分',
+    temperature: 0.1,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You score recruiting assessments for Chinese-speaking hiring teams. Return one JSON object only. All returned user-facing text must be natural Simplified Chinese. Use only the provided prompt, expected points, and candidate answers. The output fields must be summary, recommendation, nextStep, rubric, and answers. Each answer score must be 0-20. Each rubric field must be 0-100.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          ...buildScoringPayload(record, answers),
+          instructions: {
+            recommendationOptions: ['strong_yes', 'yes', 'hold', 'no'],
+            answerFields: ['questionId', 'score', 'feedback', 'strengths', 'gaps'],
+            rubricFields: ['technical', 'communication', 'structuredThinking', 'roleFit'],
+            answerScoreRange: '0-20',
+            rubricScoreRange: '0-100',
+            answerCountMustMatchQuestions: true,
+          },
+        }),
+      },
+    ],
+  })
+
+  if (!parsed) {
+    return null
+  }
+
+  return parseAiScoringResult(parsed)
+}
+
 async function scoreWithOpenAI(record: AssessmentRecord, answers: AssessmentAnswer[]) {
   const apiKey = getProviderApiKey()
 
@@ -645,7 +772,7 @@ async function scoreWithOpenAI(record: AssessmentRecord, answers: AssessmentAnsw
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_ASSESSMENT_MODEL || getDefaultTextModel(),
+      model: getAssessmentScoringModel(),
       store: false,
       input: [
         {
@@ -655,18 +782,7 @@ async function scoreWithOpenAI(record: AssessmentRecord, answers: AssessmentAnsw
         },
         {
           role: 'user',
-          content: JSON.stringify({
-            title: record.title,
-            mode: record.mode,
-            questions: record.questions.map((question) => ({
-              id: question.id,
-              prompt: question.prompt,
-              category: question.category,
-              maxScore: question.maxScore,
-              expectedPoints: question.expectedPoints,
-              answer: getEffectiveAnswerText(answers.find((answer) => answer.questionId === question.id) ?? { answer: '', transcript: null }),
-            })),
-          }),
+          content: JSON.stringify(buildScoringPayload(record, answers)),
         },
       ],
       text: {
@@ -694,8 +810,8 @@ async function scoreWithOpenAI(record: AssessmentRecord, answers: AssessmentAnsw
               },
               answers: {
                 type: 'array',
-                minItems: 5,
-                maxItems: 5,
+                minItems: 1,
+                maxItems: 10,
                 items: {
                   type: 'object',
                   additionalProperties: false,
@@ -737,55 +853,7 @@ async function scoreWithOpenAI(record: AssessmentRecord, answers: AssessmentAnsw
   }
 
   const parsed = JSON.parse(outputText) as Record<string, unknown>
-
-  if (
-    !Array.isArray(parsed.answers) ||
-    !isObject(parsed.rubric) ||
-    typeof parsed.summary !== 'string' ||
-    typeof parsed.nextStep !== 'string' ||
-    (parsed.recommendation !== 'strong_yes' &&
-      parsed.recommendation !== 'yes' &&
-      parsed.recommendation !== 'hold' &&
-      parsed.recommendation !== 'no')
-  ) {
-    return null
-  }
-
-  const answerMap = new Map(
-    parsed.answers
-      .filter((item): item is Record<string, unknown> => isObject(item))
-      .map((item) => [
-        item.questionId,
-        {
-          score: typeof item.score === 'number' ? clamp(Math.round(item.score), 0, 20) : 0,
-          feedback: typeof item.feedback === 'string' ? item.feedback : '',
-          strengths: Array.isArray(item.strengths)
-            ? item.strengths.filter((value): value is string => typeof value === 'string').slice(0, 3)
-            : [],
-          gaps: Array.isArray(item.gaps)
-            ? item.gaps.filter((value): value is string => typeof value === 'string').slice(0, 3)
-            : [],
-        },
-      ])
-  )
-
-  const rubric = parsed.rubric
-
-  return {
-    summary: parsed.summary,
-    recommendation: parsed.recommendation,
-    nextStep: parsed.nextStep,
-    rubric: {
-      technical: typeof rubric.technical === 'number' ? clamp(Math.round(rubric.technical), 0, 100) : 0,
-      communication: typeof rubric.communication === 'number' ? clamp(Math.round(rubric.communication), 0, 100) : 0,
-      structuredThinking:
-        typeof rubric.structuredThinking === 'number'
-          ? clamp(Math.round(rubric.structuredThinking), 0, 100)
-          : 0,
-      roleFit: typeof rubric.roleFit === 'number' ? clamp(Math.round(rubric.roleFit), 0, 100) : 0,
-    } satisfies AssessmentRubric,
-    answerMap,
-  }
+  return parseAiScoringResult(parsed)
 }
 
 function recommendationFromScore(score: number): AssessmentRecommendation {
@@ -822,7 +890,9 @@ export async function evaluateAssessmentRecord(
   })
 
   try {
-    const aiEvaluation = await scoreWithOpenAI(record, normalizedAnswers)
+    const aiEvaluation = shouldPreferDashScope()
+      ? await scoreWithDashScope(record, normalizedAnswers)
+      : await scoreWithOpenAI(record, normalizedAnswers)
     if (aiEvaluation) {
       const evaluatedAnswers = normalizedAnswers.map((answer) => {
         const scored = aiEvaluation.answerMap.get(answer.questionId)

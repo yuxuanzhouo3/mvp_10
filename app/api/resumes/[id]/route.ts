@@ -7,6 +7,12 @@ import {
 } from '@/lib/server/resume-defaults'
 import { normalizeResumeContactInfo } from '@/lib/resume-contact'
 import { getResumeRecordById, updateResumeRecord } from '@/lib/server/resume-store'
+import {
+  isAuthErrorMessage,
+  isPermissionErrorMessage,
+  requireAuthenticatedUser,
+} from '@/lib/server/auth-helpers'
+import type { AppUser } from '@/types/auth'
 import type {
   CandidateOutreachStatus,
   CandidateReviewStatus,
@@ -16,6 +22,7 @@ import type {
   CandidateTaskKind,
   CandidateTaskStatus,
   ResumeContactInfo,
+  ResumeRecord,
 } from '@/types/resume'
 
 export const runtime = 'nodejs'
@@ -43,6 +50,23 @@ const TASK_KINDS: CandidateTaskKind[] = [
   'custom',
 ]
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function normalizeEmail(value: string | null | undefined) {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function canAccessResume(record: ResumeRecord, user: AppUser) {
+  if (user.role === 'admin') {
+    return true
+  }
+
+  if (record.ownerUserId) {
+    return record.ownerUserId === user.id
+  }
+
+  const userEmail = normalizeEmail(user.email)
+  return [record.ownerEmail, record.contact.email].some((value) => normalizeEmail(value) === userEmail)
+}
 
 function isStage(value: unknown): value is CandidateStage {
   return typeof value === 'string' && STAGES.includes(value as CandidateStage)
@@ -126,10 +150,7 @@ function normalizeTaskArray(input: Array<Record<string, unknown>>, existingTasks
           ? rawTask.createdAt
           : existing?.createdAt ?? now,
       updatedAt: now,
-      completedAt:
-        status === 'done'
-          ? existing?.completedAt ?? now
-          : null,
+      completedAt: status === 'done' ? existing?.completedAt ?? now : null,
     })
   }
 
@@ -148,8 +169,8 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
       events.push(
         createTimelineEvent({
           type: 'task_created',
-          actor: 'recruiter',
-          title: `已创建任务：${task.title}`,
+          actor: 'candidate',
+          title: `任务已创建：${task.title}`,
           description: task.description ?? `渠道：${task.channel}`,
           createdAt,
         })
@@ -161,7 +182,7 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
       events.push(
         createTimelineEvent({
           type: 'task_updated',
-          actor: 'recruiter',
+          actor: 'candidate',
           title: task.status === 'done' ? `任务已完成：${task.title}` : `任务状态已更新：${task.title}`,
           description: `${previous.status} -> ${task.status}`,
           createdAt,
@@ -180,7 +201,7 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
       events.push(
         createTimelineEvent({
           type: 'task_updated',
-          actor: 'recruiter',
+          actor: 'candidate',
           title: `任务已更新：${task.title}`,
           description: '任务详情已被修改。',
           createdAt,
@@ -194,9 +215,9 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
       events.push(
         createTimelineEvent({
           type: 'task_updated',
-          actor: 'recruiter',
+          actor: 'candidate',
           title: `任务已移除：${previous.title}`,
-          description: '招聘方已将该任务从看板中移除。',
+          description: '该任务已从当前待办中移除。',
           createdAt,
         })
       )
@@ -206,24 +227,40 @@ function appendTaskTimelineEvents(previousTasks: CandidateTask[], nextTasks: Can
   return events
 }
 
-export async function GET(
-  _request: Request,
-  { params }: { params: { id: string } }
-) {
-  const record = await getResumeRecordById(params.id)
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const { user } = await requireAuthenticatedUser(request)
+    const record = await getResumeRecordById(params.id)
 
-  if (!record) {
-    return NextResponse.json({ error: '未找到对应的简历记录。' }, { status: 404 })
+    if (!record) {
+      return NextResponse.json({ error: 'Resume not found.' }, { status: 404 })
+    }
+
+    if (!canAccessResume(record, user)) {
+      return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
+    }
+
+    return NextResponse.json(record)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load resume.'
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
-
-  return NextResponse.json(record)
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
+    const { user } = await requireAuthenticatedUser(request)
+    const existing = await getResumeRecordById(params.id)
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Resume not found.' }, { status: 404 })
+    }
+
+    if (!canAccessResume(existing, user)) {
+      return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
+    }
+
     const body = (await request.json()) as {
       stage?: unknown
       reviewStatus?: unknown
@@ -260,7 +297,7 @@ export async function PATCH(
       })
 
       if (nextContact.email && !EMAIL_PATTERN.test(nextContact.email)) {
-        throw new Error('请输入有效的邮箱地址。')
+        throw new Error('Please enter a valid email address.')
       }
 
       const hasCompleteContact = Boolean(nextContact.email && nextContact.phone)
@@ -301,9 +338,9 @@ export async function PATCH(
         timelineEvents.push(
           createTimelineEvent({
             type: 'contact_updated',
-            actor: 'recruiter',
+            actor: 'candidate',
             title: '候选人联系方式已更新',
-            description: '招聘方修正或补充了系统解析出的联系信息。',
+            description: '已同步最新的联系方式信息。',
             createdAt: now,
           })
         )
@@ -313,9 +350,9 @@ export async function PATCH(
         timelineEvents.push(
           createTimelineEvent({
             type: 'workflow_updated',
-            actor: 'recruiter',
+            actor: 'candidate',
             title: `流程已更新为：${nextStage}`,
-            description: `评审状态：${nextReviewStatus}，联系进度：${nextOutreachStatus}。`,
+            description: `评审：${nextReviewStatus}，沟通：${nextOutreachStatus}`,
             createdAt: now,
           })
         )
@@ -325,8 +362,8 @@ export async function PATCH(
         timelineEvents.push(
           createTimelineEvent({
             type: 'note_added',
-            actor: 'recruiter',
-            title: '招聘备注已更新',
+            actor: 'candidate',
+            title: '简历备注已更新',
             description: nextNotes.trim() ? nextNotes.trim().slice(0, 160) : '备注已清空。',
             createdAt: now,
           })
@@ -336,6 +373,7 @@ export async function PATCH(
       const baseRecord = {
         ...record,
         contact: nextContact,
+        ownerEmail: record.ownerEmail ?? nextContact.email ?? null,
         workflow: {
           ...record.workflow,
           stage: nextStage,
@@ -362,12 +400,13 @@ export async function PATCH(
     })
 
     if (!updatedRecord) {
-      return NextResponse.json({ error: '未找到对应的简历记录。' }, { status: 404 })
+      return NextResponse.json({ error: 'Resume not found.' }, { status: 404 })
     }
 
     return NextResponse.json(updatedRecord)
   } catch (error) {
-    const message = error instanceof Error ? error.message : '简历更新失败。'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Resume update failed.'
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

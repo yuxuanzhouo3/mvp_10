@@ -1,4 +1,5 @@
 import type { ResumeContactInfo } from '@/types/resume'
+import { normalizeCityLocation } from '@/lib/location'
 
 const GENDER_SEGMENT_PATTERN =
   /(?:^|[\s,;|/])(?:gender|sex|性别|鎬у埆)\s*[:：]?\s*(?:male|female|man|woman|男|女)\s*/gi
@@ -25,7 +26,7 @@ export function sanitizeResumeLocation(value: string | null | undefined) {
 
   const labeledLocation = raw.match(LOCATION_VALUE_PATTERN)?.[1]?.trim()
   if (labeledLocation) {
-    return labeledLocation
+    return normalizeCityLocation(labeledLocation)
   }
 
   const withoutGender = raw.replace(GENDER_SEGMENT_PATTERN, ' ')
@@ -34,7 +35,7 @@ export function sanitizeResumeLocation(value: string | null | undefined) {
     .replace(/\s{2,}/g, ' ')
     .trim()
 
-  return normalized || null
+  return normalizeCityLocation(normalized || null)
 }
 
 export function normalizeResumeContactInfo(

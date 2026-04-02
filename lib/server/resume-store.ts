@@ -60,6 +60,11 @@ export async function listResumeRecords() {
   )
 }
 
+export async function listResumeRecordsByOwner(ownerUserId: string) {
+  const records = await listResumeRecords()
+  return records.filter((record) => record.ownerUserId === ownerUserId)
+}
+
 export async function addResumeRecord(record: ResumeRecord) {
   const normalizedRecord = normalizeResumeRecord(record)
 
@@ -127,6 +132,9 @@ export async function updateResumeRecord(
 export function toResumeListItem(record: ResumeRecord): ResumeListItem {
   return {
     id: record.id,
+    ownerUserId: record.ownerUserId,
+    ownerName: record.ownerName,
+    ownerEmail: record.ownerEmail,
     fileName: record.fileName,
     mimeType: record.mimeType,
     fileSize: record.fileSize,

@@ -17,6 +17,7 @@ import type {
   PasswordResetCode,
   RegistrationVerificationCode,
   StoredUser,
+  UserRole,
   UserPreferences,
 } from '@/types/auth'
 
@@ -32,11 +33,11 @@ const RESET_CODES_COLLECTION = 'auth_reset_codes'
 const REGISTRATION_CODES_COLLECTION = 'auth_registration_codes'
 const CODE_RESEND_COOLDOWN_MS = 1000 * 60
 
-function defaultPreferences(): UserPreferences {
+function defaultPreferences(role: UserRole): UserPreferences {
   return {
     industries: ['Technology', 'AI/ML'],
-    locations: ['Remote'],
-    experienceLevel: '0-2 years',
+    locations: role === 'recruiter' ? ['China'] : ['Remote'],
+    experienceLevel: role === 'recruiter' ? 'Hiring team' : '0-2 years',
   }
 }
 
@@ -249,18 +250,24 @@ export async function getUserById(id: string) {
   )
 }
 
-export async function createUser(input: { email: string; password: string; name: string }) {
+export async function createUser(input: {
+  email: string
+  password: string
+  name: string
+  role?: Extract<UserRole, 'candidate' | 'recruiter'>
+}) {
   const normalizedEmail = normalizeEmail(input.email)
   const createdAt = new Date().toISOString()
   const { passwordHash, passwordSalt } = hashPassword(input.password)
+  const role = input.role === 'recruiter' ? 'recruiter' : 'candidate'
   const user: StoredUser = {
     id: crypto.randomUUID(),
     email: normalizedEmail,
     name: input.name.trim(),
-    role: 'candidate',
+    role,
     plan: 'free',
     billingStatus: 'inactive',
-    preferences: defaultPreferences(),
+    preferences: defaultPreferences(role),
     createdAt,
     passwordHash,
     passwordSalt,

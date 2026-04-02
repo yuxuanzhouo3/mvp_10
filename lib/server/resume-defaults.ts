@@ -779,6 +779,9 @@ export function normalizeResumeRecord(record: ResumeRecord): ResumeRecord {
 
   const normalizedRecord: ResumeRecord = {
     ...record,
+    ownerUserId: record.ownerUserId ?? null,
+    ownerName: record.ownerName ?? null,
+    ownerEmail: record.ownerEmail ?? normalizedContact.email ?? null,
     summary:
       normalizedYearsExperience !== record.profile.yearsExperience
         ? buildNormalizedResumeSummary(record, normalizedContact, normalizedProfile)

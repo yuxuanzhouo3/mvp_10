@@ -98,6 +98,25 @@ const SKILL_ALIASES: Record<string, string[]> = {
   Figma: ['figma'],
 }
 
+const SKILL_NEIGHBOR_SUGGESTIONS: Record<string, string[]> = {
+  Python: ['FastAPI', 'Pandas', 'NumPy'],
+  Java: ['Spring Boot', 'MySQL', 'Redis'],
+  SQL: ['MySQL', 'PostgreSQL', '数据建模'],
+  React: ['TypeScript', 'Next.js', '组件设计'],
+  'Next.js': ['TypeScript', 'Node.js', 'SSR'],
+  JavaScript: ['TypeScript', 'React', 'Node.js'],
+  TypeScript: ['React', 'Next.js', '接口建模'],
+  'Node.js': ['Express', 'NestJS', 'REST API'],
+  Docker: ['Kubernetes', 'CI/CD', 'Linux'],
+  Kubernetes: ['Docker', 'Helm', '云原生部署'],
+  AWS: ['云服务部署', '监控告警', '成本优化'],
+  Azure: ['云服务部署', 'DevOps', '资源治理'],
+  'Machine Learning': ['模型评估', '特征工程', '实验设计'],
+  'Deep Learning': ['PyTorch', '模型训练', '推理优化'],
+  NLP: ['Prompt Engineering', '文本清洗', '向量检索'],
+  'Data Analysis': ['Excel', 'Tableau', '业务分析'],
+}
+
 const TITLE_KEYWORDS = [
   'software engineer',
   'frontend engineer',
@@ -581,6 +600,44 @@ function buildSkillAnalysis(skills: string[], yearsExperience: number | null) {
   })
 }
 
+function buildSkillFocusedHighlights(
+  skills: string[],
+  skillAnalysis: ResumeSkillAnalysis[],
+  textHighlights: string[]
+) {
+  const skillHighlights = skillAnalysis
+    .filter((item) => item.match >= 72 || item.level >= 68)
+    .slice(0, 3)
+    .map((item) => `${item.skill} 可作为当前简历里的重点能力标签`)
+
+  if (skillHighlights.length > 0) {
+    return skillHighlights
+  }
+
+  if (skills.length > 0) {
+    return skills.slice(0, 3).map((skill) => `${skill} 是当前最值得前置展示的技能`)
+  }
+
+  return textHighlights.slice(0, 3)
+}
+
+function pickSkillGapSuggestions(skills: string[], skillAnalysis: ResumeSkillAnalysis[]) {
+  const normalizedSkills = new Set(skills.map((item) => item.toLowerCase()))
+
+  for (const item of skillAnalysis) {
+    const suggestions = SKILL_NEIGHBOR_SUGGESTIONS[item.skill] ?? []
+    const nextSkill = suggestions.find((suggestion) => !normalizedSkills.has(suggestion.toLowerCase()))
+    if (nextSkill) {
+      return {
+        anchorSkill: item.skill,
+        suggestion: nextSkill,
+      }
+    }
+  }
+
+  return null
+}
+
 function normalizeComposition(values: number[]) {
   const total = values.reduce((sum, value) => sum + value, 0) || 1
   const normalized = values.map((value) => Math.round((value / total) * 100))
@@ -628,8 +685,16 @@ function buildScore(contact: ResumeContactInfo, profile: ResumeProfile, textLeng
   return clamp(Math.round(score), 25, 98)
 }
 
-function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textLength: number) {
+function buildInsights(
+  contact: ResumeContactInfo,
+  profile: ResumeProfile,
+  textLength: number,
+  skillAnalysis: ResumeSkillAnalysis[]
+) {
   const insights: ResumeInsight[] = []
+  const topSkill = skillAnalysis[0] ?? null
+  const secondSkill = skillAnalysis[1] ?? null
+  const skillGap = pickSkillGapSuggestions(profile.skills, skillAnalysis)
 
   if (contact.email && contact.phone) {
     insights.push({
@@ -643,9 +708,27 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
   if (profile.skills.length >= 5) {
     insights.push({
       type: 'strength',
-      title: '技能信息较丰富',
-      description: `已识别 ${profile.skills.length} 项与市场相关的技能，有助于推荐和筛选判断。`,
+      title: '技能标签覆盖度较好',
+      description: `已识别 ${profile.skills.length} 项技能，其中 ${profile.skills.slice(0, 3).join('、')} 可以直接支撑岗位匹配与初筛判断。`,
       priority: 'high',
+    })
+  }
+
+  if (topSkill && topSkill.match >= 72) {
+    insights.push({
+      type: 'strength',
+      title: `${topSkill.skill} 是当前最强技能亮点`,
+      description: `当前已识别到 ${topSkill.skill} 的匹配度较高，建议在项目经历里继续补充你如何使用 ${topSkill.skill} 落地、优化或解决问题。`,
+      priority: 'high',
+    })
+  }
+
+  if (secondSkill && secondSkill.match >= 70) {
+    insights.push({
+      type: 'strength',
+      title: `${secondSkill.skill} 可以作为第二卖点`,
+      description: `除了核心技能外，${secondSkill.skill} 也是当前简历里可前置展示的能力，适合写在技能栏或项目结果里。`,
+      priority: 'medium',
     })
   }
 
@@ -680,7 +763,25 @@ function buildInsights(contact: ResumeContactInfo, profile: ResumeProfile, textL
     insights.push({
       type: 'improvement',
       title: '技能关键词可进一步补充',
-      description: '当前结构化技能关键词较少，可能影响自动筛选和匹配质量。',
+      description: '当前结构化技能关键词较少，建议补充你实际使用过的语言、框架、数据库、部署工具和业务分析方法。',
+      priority: 'medium',
+    })
+  }
+
+  if (skillGap) {
+    insights.push({
+      type: 'improvement',
+      title: `建议围绕 ${skillGap.anchorSkill} 补充相邻技能`,
+      description: `如果你实际接触过 ${skillGap.suggestion}，建议明确写进技能栏或项目描述，这样会更容易形成完整的技术栈信号。`,
+      priority: 'medium',
+    })
+  }
+
+  if (topSkill) {
+    insights.push({
+      type: 'improvement',
+      title: `把 ${topSkill.skill} 写得更“有结果”`,
+      description: `不要只写会 ${topSkill.skill}，建议补充使用场景、负责内容、量化结果和技术取舍，例如性能提升、问题定位或项目交付结果。`,
       priority: 'medium',
     })
   }
@@ -744,8 +845,11 @@ function buildHeuristicAnalysis(text: string): ResumeAnalysisResult {
     yearsExperience: estimateYearsExperienceFromResumeText(text),
     skills: extractSkills(text),
     education: extractEducation(lines),
-    highlights: extractHighlights(lines),
+    highlights: [],
   }
+
+  const skillAnalysis = buildSkillAnalysis(profile.skills, profile.yearsExperience)
+  profile.highlights = buildSkillFocusedHighlights(profile.skills, skillAnalysis, extractHighlights(lines))
 
   const projectSignal = lines.filter((line) => /(project|portfolio|case study|github|项目|作品|实战)/i.test(line)).length
   const composition = buildComposition(
@@ -758,14 +862,14 @@ function buildHeuristicAnalysis(text: string): ResumeAnalysisResult {
 
   return {
     score,
-    summary: buildSummary(contact, profile, score),
-    source: 'heuristic',
-    contact,
-    profile,
-    skillAnalysis: buildSkillAnalysis(profile.skills, profile.yearsExperience),
-    insights: buildInsights(contact, profile, text.length),
-    composition,
-  }
+      summary: buildSummary(contact, profile, score),
+      source: 'heuristic',
+      contact,
+      profile,
+      skillAnalysis,
+      insights: buildInsights(contact, profile, text.length, skillAnalysis),
+      composition,
+    }
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -978,7 +1082,7 @@ async function generateDashScopeResumeEnhancement(
       {
         role: 'system',
         content:
-          'You refine resume summaries for recruiting workflows. Return one JSON object only. All user-facing strings must be natural Simplified Chinese. Do not mention age, birth year, graduation year, or infer protected traits. Ground every point only in the provided structured resume data.',
+          'You refine resume summaries for recruiting workflows. Return one JSON object only. All user-facing strings must be natural Simplified Chinese. Do not mention age, birth year, graduation year, or infer protected traits. Ground every point only in the provided structured resume data. Make strengths and improvements as skill-specific as possible, and preserve technical terms such as Java, Python, SQL, React, Spring Boot, Next.js.',
       },
       {
         role: 'user',
@@ -1065,9 +1169,9 @@ async function generateOpenAIAnalysis(
       store: false,
       input: [
         {
-          role: 'system',
-          content:
-            'You analyze resumes for recruiting workflows. Extract only evidence grounded in the resume text. Do not infer protected traits or make hiring decisions. Return concise JSON only. All user-facing text must be natural Simplified Chinese. Preserve technical terms, company names, product names, and programming languages such as Java, Python, SQL, React, and Next.js in their original form. When estimating yearsExperience, count only actual work or internship experience. Never use birth year, age, graduation year, or school enrollment dates as work experience.',
+        role: 'system',
+        content:
+            'You analyze resumes for recruiting workflows. Extract only evidence grounded in the resume text. Do not infer protected traits or make hiring decisions. Return concise JSON only. All user-facing text must be natural Simplified Chinese. Preserve technical terms, company names, product names, and programming languages such as Java, Python, SQL, React, and Next.js in their original form. When estimating yearsExperience, count only actual work or internship experience. Never use birth year, age, graduation year, or school enrollment dates as work experience. Make highlights and improvement insights concrete and skill-focused whenever possible.',
         },
         {
           role: 'user',

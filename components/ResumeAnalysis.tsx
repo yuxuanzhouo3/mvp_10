@@ -82,6 +82,9 @@ const TASK_CHANNEL_OPTIONS: { value: CandidateTaskChannel; label: string }[] = [
 function toListItem(record: ResumeRecord): ResumeListItem {
   return {
     id: record.id,
+    ownerUserId: record.ownerUserId,
+    ownerName: record.ownerName,
+    ownerEmail: record.ownerEmail,
     fileName: record.fileName,
     mimeType: record.mimeType,
     fileSize: record.fileSize,

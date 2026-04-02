@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 
+import {
+  isAuthErrorMessage,
+  isPermissionErrorMessage,
+  requireUserRoles,
+} from '@/lib/server/auth-helpers'
 import { getJobById, updateJob } from '@/lib/server/job-store'
+import { normalizeCityLocation } from '@/lib/location'
+import type { UserRole } from '@/types/auth'
 import type { JobLocationMode, JobRecord, JobSeniority, JobStatus, JobType } from '@/types/job'
 
 export const runtime = 'nodejs'
@@ -47,18 +54,49 @@ function normalizeNullableString(value: unknown, fallback: string | null) {
   return trimmed.length > 0 ? trimmed : null
 }
 
-export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const record = await getJobById(params.id)
+function canManageJob(userId: string, role: UserRole, job: JobRecord) {
+  return role === 'admin' || !job.ownerUserId || job.ownerUserId === userId
+}
 
-  if (!record) {
-    return NextResponse.json({ error: 'Job not found.' }, { status: 404 })
+export async function GET(request: Request, { params }: { params: { id: string } }) {
+  try {
+    const record = await getJobById(params.id)
+
+    if (!record) {
+      return NextResponse.json({ error: 'Job not found.' }, { status: 404 })
+    }
+
+    if (record.status === 'published') {
+      return NextResponse.json(record)
+    }
+
+    const { user } = await requireUserRoles(request, ['recruiter', 'admin'])
+
+    if (!canManageJob(user.id, user.role, record)) {
+      return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
+    }
+
+    return NextResponse.json(record)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load job.'
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
-
-  return NextResponse.json(record)
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
+    const { user } = await requireUserRoles(request, ['recruiter', 'admin'])
+    const existing = await getJobById(params.id)
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Job not found.' }, { status: 404 })
+    }
+
+    if (!canManageJob(user.id, user.role, existing)) {
+      return NextResponse.json({ error: 'User does not have permission.' }, { status: 403 })
+    }
+
     const body = (await request.json()) as Record<string, unknown>
     const updated = await updateJob(params.id, (record) => {
       const nextStatus = isStatus(body.status) ? body.status : record.status
@@ -67,13 +105,18 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       const nextRecord: JobRecord = {
         ...record,
         updatedAt: now,
+        ownerUserId: record.ownerUserId ?? user.id,
+        ownerName: record.ownerName ?? user.name,
+        ownerEmail: record.ownerEmail ?? user.email,
         title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : record.title,
         company: typeof body.company === 'string' && body.company.trim() ? body.company.trim() : record.company,
         companyTagline:
           typeof body.companyTagline === 'string' ? body.companyTagline.trim() : record.companyTagline,
         status: nextStatus,
         contactEmail: normalizeNullableString(body.contactEmail, record.contactEmail),
-        location: typeof body.location === 'string' && body.location.trim() ? body.location.trim() : record.location,
+        location:
+          normalizeCityLocation(typeof body.location === 'string' ? body.location : null) ??
+          record.location,
         locationMode: isLocationMode(body.locationMode) ? body.locationMode : record.locationMode,
         salaryMin:
           typeof body.salaryMin === 'number' || typeof body.salaryMin === 'string'
@@ -85,10 +128,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
             : record.salaryMax,
         currency: body.currency === 'USD' ? 'USD' : body.currency === 'CNY' ? 'CNY' : record.currency,
         type: isJobType(body.type) ? body.type : record.type,
-        postedAt:
-          nextStatus === 'published' && record.status !== 'published'
-            ? now
-            : record.postedAt,
+        postedAt: nextStatus === 'published' && record.status !== 'published' ? now : record.postedAt,
         industries: normalizeStringArray(body.industries, record.industries),
         requiredSkills: normalizeStringArray(body.requiredSkills, record.requiredSkills),
         preferredSkills: normalizeStringArray(body.preferredSkills, record.preferredSkills),
@@ -114,6 +154,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     return NextResponse.json(updated)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update job.'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const status = isAuthErrorMessage(message) ? 401 : isPermissionErrorMessage(message) ? 403 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

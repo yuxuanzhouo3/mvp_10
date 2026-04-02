@@ -2,14 +2,20 @@
 
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react'
 
-import type { AppUser } from '@/types/auth'
+import type { AppUser, UserRole } from '@/types/auth'
 
 interface AuthContextType {
   user: AppUser | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
-  register: (userData: { email: string; password: string; name: string; code: string }) => Promise<void>
+  register: (userData: {
+    email: string
+    password: string
+    name: string
+    code: string
+    role: Extract<UserRole, 'candidate' | 'recruiter'>
+  }) => Promise<void>
   sendRegistrationCode: (email: string) => Promise<string>
   forgotPassword: (email: string) => Promise<string>
   resetPassword: (payload: {
@@ -118,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string
     name: string
     code: string
+    role: Extract<UserRole, 'candidate' | 'recruiter'>
   }) => {
     const response = await fetch('/api/auth/register', {
       method: 'POST',

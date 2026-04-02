@@ -8,6 +8,8 @@ import {
 } from '@/lib/server/resume-defaults'
 import { analyzeResumeText, extractResumeText } from '@/lib/server/resume-analysis'
 import { addResumeRecord, listResumeRecords, saveResumeFile, toResumeListItem } from '@/lib/server/resume-store'
+import { isAuthErrorMessage, requireAuthenticatedUser } from '@/lib/server/auth-helpers'
+import type { AppUser } from '@/types/auth'
 import type { ResumeRecord } from '@/types/resume'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -15,26 +17,54 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const records = await listResumeRecords()
-  return NextResponse.json(records.map(toResumeListItem))
+function normalizeEmail(value: string | null | undefined) {
+  return (value ?? '').trim().toLowerCase()
+}
+
+function isResumeOwner(record: ResumeRecord, user: Pick<AppUser, 'id' | 'email'>) {
+  if (record.ownerUserId) {
+    return record.ownerUserId === user.id
+  }
+
+  const userEmail = normalizeEmail(user.email)
+  return [record.ownerEmail, record.contact.email].some((value) => normalizeEmail(value) === userEmail)
+}
+
+export async function GET(request: Request) {
+  try {
+    const { user } = await requireAuthenticatedUser(request)
+    const url = new URL(request.url)
+    const scope = url.searchParams.get('scope')
+    const records = await listResumeRecords()
+
+    if (scope === 'all' && user.role === 'admin') {
+      return NextResponse.json(records.map(toResumeListItem))
+    }
+
+    return NextResponse.json(records.filter((record) => isResumeOwner(record, user)).map(toResumeListItem))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load resumes.'
+    const status = isAuthErrorMessage(message) ? 401 : 500
+    return NextResponse.json({ error: message }, { status })
+  }
 }
 
 export async function POST(request: Request) {
   try {
+    const { user } = await requireAuthenticatedUser(request)
     const formData = await request.formData()
     const uploaded = formData.get('resume')
 
     if (!(uploaded instanceof File)) {
-      return NextResponse.json({ error: '未检测到上传的简历文件。' }, { status: 400 })
+      return NextResponse.json({ error: 'Please upload a resume file.' }, { status: 400 })
     }
 
     if (uploaded.size === 0) {
-      return NextResponse.json({ error: '上传的文件为空。' }, { status: 400 })
+      return NextResponse.json({ error: 'The uploaded file is empty.' }, { status: 400 })
     }
 
     if (uploaded.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: '简历文件大小不能超过 10MB。' }, { status: 400 })
+      return NextResponse.json({ error: 'Resume file size cannot exceed 10MB.' }, { status: 400 })
     }
 
     const id = crypto.randomUUID()
@@ -45,13 +75,12 @@ export async function POST(request: Request) {
 
     if (!extractedText) {
       return NextResponse.json(
-        { error: '无法将简历解析为文本，请尝试文本型 PDF 或 DOCX 文件。' },
+        { error: 'Unable to extract text from this resume. Please upload a text-based PDF or DOCX.' },
         { status: 400 }
       )
     }
 
     const analysis = await analyzeResumeText(extractedText)
-
     const workflow = buildDefaultWorkflow({
       contact: analysis.contact,
       score: analysis.score,
@@ -61,6 +90,9 @@ export async function POST(request: Request) {
 
     const record: ResumeRecord = {
       id,
+      ownerUserId: user.id,
+      ownerName: user.name,
+      ownerEmail: user.email,
       fileName: uploaded.name,
       mimeType: uploaded.type || 'application/octet-stream',
       fileSize: uploaded.size,
@@ -84,10 +116,10 @@ export async function POST(request: Request) {
     }
 
     await addResumeRecord(record)
-
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
-    const message = error instanceof Error ? error.message : '简历上传失败。'
-    return NextResponse.json({ error: message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Resume upload failed.'
+    const status = isAuthErrorMessage(message) ? 401 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }
