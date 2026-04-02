@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     const id = crypto.randomUUID()
     const createdAt = new Date().toISOString()
     const buffer = Buffer.from(await uploaded.arrayBuffer())
-    const { storedFileName } = await saveResumeFile(id, uploaded.name, buffer)
+    const { storedFileName, cloudFileId, storageProvider } = await saveResumeFile(id, uploaded.name, buffer)
     const extractedText = await extractResumeText(buffer, uploaded.name, uploaded.type)
 
     if (!extractedText) {
@@ -98,6 +98,8 @@ export async function POST(request: Request) {
       fileSize: uploaded.size,
       createdAt,
       storedFileName,
+      cloudFileId,
+      storageProvider,
       extractedText,
       ...analysis,
       workflow,

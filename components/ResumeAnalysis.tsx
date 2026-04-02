@@ -25,6 +25,8 @@ import {
 } from 'lucide-react'
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 
+import { getStoredAuthToken } from './AuthProvider'
+import { downloadResumeOriginalFile } from '@/lib/client/resume-download'
 import type {
   CandidateOutreachStatus,
   CandidateReviewStatus,
@@ -90,6 +92,8 @@ function toListItem(record: ResumeRecord): ResumeListItem {
     fileSize: record.fileSize,
     createdAt: record.createdAt,
     storedFileName: record.storedFileName,
+    cloudFileId: record.cloudFileId,
+    storageProvider: record.storageProvider,
     score: record.score,
     summary: record.summary,
     source: record.source,
@@ -354,6 +358,10 @@ function buildEmptyTask(): CandidateTask {
   }
 }
 
+function hasStoredAuthToken() {
+  return Boolean(getStoredAuthToken())
+}
+
 export function ResumeAnalysis() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [activeResume, setActiveResume] = useState<ResumeRecord | null>(null)
@@ -369,6 +377,7 @@ export function ResumeAnalysis() {
   const [savingTasks, setSavingTasks] = useState(false)
   const [sendingReceipt, setSendingReceipt] = useState(false)
   const [sendingInterviewInvite, setSendingInterviewInvite] = useState(false)
+  const [downloadingResumeId, setDownloadingResumeId] = useState<string | null>(null)
   const [receiptFeedback, setReceiptFeedback] = useState('')
   const [interviewInviteFeedback, setInterviewInviteFeedback] = useState('')
   const [showFullText, setShowFullText] = useState(false)
@@ -538,6 +547,27 @@ export function ResumeAnalysis() {
     } finally {
       setLoading(false)
       event.target.value = ''
+    }
+  }
+
+  async function handleDownloadResume() {
+    if (!activeResume) {
+      return
+    }
+
+    try {
+      setDownloadingResumeId(activeResume.id)
+      setError('')
+
+      await downloadResumeOriginalFile({
+        resumeId: activeResume.id,
+        fileName: activeResume.fileName,
+        token: getStoredAuthToken(),
+      })
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Resume download failed.')
+    } finally {
+      setDownloadingResumeId(null)
     }
   }
 
@@ -1723,9 +1753,17 @@ export function ResumeAnalysis() {
                     {!showFullText && activeResume.extractedText.length > 900 ? '...' : ''}
                   </p>
                 </div>
-                <button className="w-full btn-secondary flex items-center justify-center space-x-2">
-                  <Download className="h-4 w-4" />
-                  <span>导出分析快照</span>
+                <button
+                  onClick={() => void handleDownloadResume()}
+                  disabled={!activeResume || !hasStoredAuthToken() || downloadingResumeId === activeResume.id}
+                  className="w-full btn-secondary flex items-center justify-center space-x-2 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {downloadingResumeId === activeResume.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  <span>{downloadingResumeId === activeResume.id ? '下载中...' : '下载原始简历'}</span>
                 </button>
               </div>
             ) : (

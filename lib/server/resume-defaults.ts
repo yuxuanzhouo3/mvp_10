@@ -782,6 +782,8 @@ export function normalizeResumeRecord(record: ResumeRecord): ResumeRecord {
     ownerUserId: record.ownerUserId ?? null,
     ownerName: record.ownerName ?? null,
     ownerEmail: record.ownerEmail ?? normalizedContact.email ?? null,
+    cloudFileId: typeof record.cloudFileId === 'string' ? record.cloudFileId : null,
+    storageProvider: record.storageProvider === 'cloudbase' ? 'cloudbase' : 'local',
     summary:
       normalizedYearsExperience !== record.profile.yearsExperience
         ? buildNormalizedResumeSummary(record, normalizedContact, normalizedProfile)

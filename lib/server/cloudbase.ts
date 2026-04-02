@@ -201,6 +201,45 @@ export function requireCloudDb() {
   return db
 }
 
+export function requireCloudApp() {
+  const app = getCloudApp()
+
+  if (!app) {
+    throw new Error('CloudBase is not configured. Set CLOUDBASE_ENV_ID first.')
+  }
+
+  return app
+}
+
+export async function uploadCloudFile(cloudPath: string, fileContent: Buffer) {
+  const app = requireCloudApp()
+  return app.uploadFile({
+    cloudPath,
+    fileContent,
+  })
+}
+
+export async function getCloudTempFileUrl(fileID: string, maxAge = 3600) {
+  const app = requireCloudApp()
+  const result = await app.getTempFileURL({
+    fileList: [
+      {
+        fileID,
+        maxAge,
+      },
+    ],
+  })
+
+  return result.fileList?.[0]?.tempFileURL ?? null
+}
+
+export async function deleteCloudFile(fileID: string) {
+  const app = requireCloudApp()
+  return app.deleteFile({
+    fileList: [fileID],
+  })
+}
+
 async function ensureCloudCollection(collectionName: string) {
   const cacheKey = getCollectionCacheKey(collectionName)
 

@@ -2,10 +2,11 @@
 
 import type { ChangeEvent } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ChevronDown, FileText, Loader2, Mail, MapPin, Phone, TrendingUp, Upload, User } from 'lucide-react'
+import { AlertCircle, ChevronDown, Download, FileText, Loader2, Mail, MapPin, Phone, TrendingUp, Upload, User } from 'lucide-react'
 
 import { getStoredAuthToken } from './AuthProvider'
 import { TechnicalTag } from './TechnicalText'
+import { downloadResumeOriginalFile } from '@/lib/client/resume-download'
 import type { ResumeInsight, ResumeListItem, ResumeRecord } from '@/types/resume'
 
 function getAuthorizedHeaders() {
@@ -50,6 +51,7 @@ export function CandidateResumeCenter() {
   const [loading, setLoading] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [downloadingResumeId, setDownloadingResumeId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
@@ -161,6 +163,23 @@ export function CandidateResumeCenter() {
     }
   }
 
+  async function handleDownloadResume(record: Pick<ResumeRecord, 'id' | 'fileName'>) {
+    try {
+      setDownloadingResumeId(record.id)
+      setError('')
+
+      await downloadResumeOriginalFile({
+        resumeId: record.id,
+        fileName: record.fileName,
+        token: getStoredAuthToken(),
+      })
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Resume download failed.')
+    } finally {
+      setDownloadingResumeId(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="card flex items-center justify-center py-16">
@@ -260,6 +279,19 @@ export function CandidateResumeCenter() {
                   <h3 className="text-2xl font-semibold text-slate-900">{activeResume.fileName}</h3>
                   <p className="mt-2 text-sm leading-7 text-slate-600">{activeResume.summary}</p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDownloadResume(activeResume)}
+                  disabled={downloadingResumeId === activeResume.id}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {downloadingResumeId === activeResume.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  <span>{downloadingResumeId === activeResume.id ? '下载中...' : '下载原简历'}</span>
+                </button>
                 <div className="rounded-2xl bg-slate-50 px-5 py-4 text-sm text-slate-600">
                   简历评分
                   <span className="ml-3 text-2xl font-semibold text-slate-900">{activeResume.score}</span>

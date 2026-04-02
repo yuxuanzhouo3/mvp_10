@@ -1,0 +1,12 @@
+.git
+.gitignore
+.next
+node_modules
+data
+.env.local
+*.log
+*.err
+*.out
+*.pid
+*.tsbuildinfo
+.DS_Store

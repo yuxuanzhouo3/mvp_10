@@ -6,20 +6,33 @@ import {
   listCloudDocuments,
   putCloudDocument,
   readLocalJsonFile,
+  uploadCloudFile,
   withCloudBaseFallback,
   writeLocalBufferFile,
   writeLocalJsonFile,
 } from '@/lib/server/cloudbase'
 import { normalizeResumeRecord } from '@/lib/server/resume-defaults'
-import type { ResumeListItem, ResumeRecord } from '@/types/resume'
+import type { ResumeListItem, ResumeRecord, ResumeStorageProvider } from '@/types/resume'
 
 const DATA_DIR = path.join(process.cwd(), 'data', 'resumes')
 const FILES_DIR = path.join(DATA_DIR, 'files')
 const INDEX_FILE = path.join(DATA_DIR, 'index.json')
 const RESUMES_COLLECTION = 'resumes'
 
+interface SavedResumeFile {
+  storedFileName: string
+  storedFilePath: string
+  cloudFileId: string | null
+  storageProvider: ResumeStorageProvider
+}
+
 function sanitizeFileName(fileName: string) {
   return fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
+function getStoragePathPrefix() {
+  const customPrefix = process.env.CLOUDBASE_STORAGE_PATH_PREFIX?.trim().replace(/^[\\/]+|[\\/]+$/g, '')
+  return customPrefix || 'resumes'
 }
 
 async function readResumeRecords() {
@@ -37,18 +50,43 @@ function sortResumeRecords(records: ResumeRecord[]) {
   })
 }
 
-export async function saveResumeFile(id: string, fileName: string, buffer: Buffer) {
-  await ensureLocalDir(FILES_DIR)
+export function getResumeLocalFilePath(storedFileName: string) {
+  return path.join(FILES_DIR, storedFileName)
+}
 
+export async function saveResumeFile(id: string, fileName: string, buffer: Buffer): Promise<SavedResumeFile> {
   const storedFileName = `${id}-${sanitizeFileName(fileName)}`
-  const storedFilePath = path.join(FILES_DIR, storedFileName)
+  const storedFilePath = getResumeLocalFilePath(storedFileName)
 
-  await writeLocalBufferFile(storedFilePath, buffer)
+  return withCloudBaseFallback<SavedResumeFile>(
+    'saveResumeFile',
+    async () => {
+      const cloudPath = `${getStoragePathPrefix()}/${id}/${storedFileName}`
+      const result = await uploadCloudFile(cloudPath, buffer)
 
-  return {
-    storedFileName,
-    storedFilePath,
-  }
+      if (!result.fileID) {
+        throw new Error('CloudBase upload did not return a file ID.')
+      }
+
+      return {
+        storedFileName,
+        storedFilePath,
+        cloudFileId: result.fileID,
+        storageProvider: 'cloudbase' as const,
+      }
+    },
+    async () => {
+      await ensureLocalDir(FILES_DIR)
+      await writeLocalBufferFile(storedFilePath, buffer)
+
+      return {
+        storedFileName,
+        storedFilePath,
+        cloudFileId: null,
+        storageProvider: 'local' as const,
+      }
+    }
+  )
 }
 
 export async function listResumeRecords() {
@@ -140,6 +178,8 @@ export function toResumeListItem(record: ResumeRecord): ResumeListItem {
     fileSize: record.fileSize,
     createdAt: record.createdAt,
     storedFileName: record.storedFileName,
+    cloudFileId: record.cloudFileId,
+    storageProvider: record.storageProvider,
     score: record.score,
     summary: record.summary,
     source: record.source,
