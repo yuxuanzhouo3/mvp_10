@@ -11,6 +11,10 @@ import {
   withCloudBaseFallback,
   writeLocalJsonFile,
 } from '@/lib/server/cloudbase'
+import {
+  isCloudBaseAuthVerificationError,
+  verifyCloudBaseEmailVerificationCode,
+} from '@/lib/server/cloudbase-auth-verification'
 import type {
   AppUser,
   AuthSession,
@@ -31,7 +35,6 @@ const USERS_COLLECTION = 'auth_users'
 const SESSIONS_COLLECTION = 'auth_sessions'
 const RESET_CODES_COLLECTION = 'auth_reset_codes'
 const REGISTRATION_CODES_COLLECTION = 'auth_registration_codes'
-const CODE_RESEND_COOLDOWN_MS = 1000 * 60
 
 function defaultPreferences(role: UserRole): UserPreferences {
   return {
@@ -73,27 +76,6 @@ function isExpired(isoTimestamp: string) {
 function sortByCreatedAtDescending<T extends { createdAt: string }>(records: T[]) {
   return [...records].sort(
     (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-  )
-}
-
-function getRemainingCooldownSeconds(createdAt: string) {
-  const availableAt = new Date(createdAt).getTime() + CODE_RESEND_COOLDOWN_MS
-  return Math.max(1, Math.ceil((availableAt - Date.now()) / 1000))
-}
-
-function ensureCodeRequestCooldown(record: { createdAt: string } | null) {
-  if (!record) {
-    return
-  }
-
-  const createdAt = new Date(record.createdAt).getTime()
-
-  if (createdAt + CODE_RESEND_COOLDOWN_MS <= Date.now()) {
-    return
-  }
-
-  throw new Error(
-    `Please wait ${getRemainingCooldownSeconds(record.createdAt)} seconds before requesting another verification code.`
   )
 }
 
@@ -407,17 +389,35 @@ export async function updateUser(userId: string, updater: (user: StoredUser) => 
   )
 }
 
-export async function createPasswordResetCode(email: string) {
+function isInvalidVerificationCodeError(error: unknown) {
+  if (!isCloudBaseAuthVerificationError(error)) {
+    return false
+  }
+
+  if (
+    error.code === 'invalid_verification_code' ||
+    error.code === 'verification_expired' ||
+    error.code === 'invalid_verification_id' ||
+    error.code === 'verification_not_found'
+  ) {
+    return true
+  }
+
+  return error.status === 400 && /verification|expired|invalid/i.test(error.message)
+}
+
+export async function createPasswordResetCode(
+  email: string,
+  verificationId: string,
+  expiresInSeconds = 600
+) {
   const normalizedEmail = normalizeEmail(email)
-  const code = `${Math.floor(100000 + Math.random() * 900000)}`
-  const { passwordHash: codeHash, passwordSalt: codeSalt } = hashPassword(code)
   const record: PasswordResetCode = {
     id: crypto.randomUUID(),
     email: normalizedEmail,
-    codeHash,
-    codeSalt,
+    verificationId,
     createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 1000 * 60 * 10).toISOString(),
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
   }
 
   await withCloudBaseFallback(
@@ -426,8 +426,6 @@ export async function createPasswordResetCode(email: string) {
       const existingRecords = await listCloudDocuments<PasswordResetCode>(RESET_CODES_COLLECTION, {
         where: { email: normalizedEmail },
       })
-      const latestRecord = sortByCreatedAtDescending(existingRecords)[0] ?? null
-      ensureCodeRequestCooldown(latestRecord)
 
       for (const existingRecord of existingRecords) {
         await deleteCloudDocument(RESET_CODES_COLLECTION, existingRecord.id)
@@ -437,23 +435,20 @@ export async function createPasswordResetCode(email: string) {
     },
     async () => {
       const resetCodes = await readResetCodes()
-      const latestRecord =
-        sortByCreatedAtDescending(resetCodes.filter((item) => item.email === normalizedEmail))[0] ??
-        null
-      ensureCodeRequestCooldown(latestRecord)
       const nextCodes = resetCodes.filter((item) => item.email !== normalizedEmail)
       nextCodes.unshift(record)
       await writeResetCodes(nextCodes)
     }
   )
 
-  return {
-    record,
-    code,
-  }
+  return { record }
 }
 
-export async function createRegistrationVerificationCode(email: string) {
+export async function createRegistrationVerificationCode(
+  email: string,
+  verificationId: string,
+  expiresInSeconds = 600
+) {
   const normalizedEmail = normalizeEmail(email)
   const existingUser = await getUserByEmail(normalizedEmail)
 
@@ -461,15 +456,12 @@ export async function createRegistrationVerificationCode(email: string) {
     throw new Error('An account with this email already exists.')
   }
 
-  const code = `${Math.floor(100000 + Math.random() * 900000)}`
-  const { passwordHash: codeHash, passwordSalt: codeSalt } = hashPassword(code)
   const record: RegistrationVerificationCode = {
     id: crypto.randomUUID(),
     email: normalizedEmail,
-    codeHash,
-    codeSalt,
+    verificationId,
     createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 1000 * 60 * 10).toISOString(),
+    expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
   }
 
   await withCloudBaseFallback(
@@ -481,8 +473,6 @@ export async function createRegistrationVerificationCode(email: string) {
           where: { email: normalizedEmail },
         }
       )
-      const latestRecord = sortByCreatedAtDescending(existingRecords)[0] ?? null
-      ensureCodeRequestCooldown(latestRecord)
 
       for (const existingRecord of existingRecords) {
         await deleteCloudDocument(REGISTRATION_CODES_COLLECTION, existingRecord.id)
@@ -492,21 +482,13 @@ export async function createRegistrationVerificationCode(email: string) {
     },
     async () => {
       const registrationCodes = await readRegistrationCodes()
-      const latestRecord =
-        sortByCreatedAtDescending(
-          registrationCodes.filter((item) => item.email === normalizedEmail)
-        )[0] ?? null
-      ensureCodeRequestCooldown(latestRecord)
       const nextCodes = registrationCodes.filter((item) => item.email !== normalizedEmail)
       nextCodes.unshift(record)
       await writeRegistrationCodes(nextCodes)
     }
   )
 
-  return {
-    record,
-    code,
-  }
+  return { record }
 }
 
 export async function verifyRegistrationCode(email: string, code: string) {
@@ -517,27 +499,39 @@ export async function verifyRegistrationCode(email: string, code: string) {
     async () => {
       const registrationCode = await getCloudRegistrationCodeByEmail(normalizedEmail)
 
-      if (
-        !registrationCode ||
-        !verifyPassword(code, registrationCode.codeSalt, registrationCode.codeHash)
-      ) {
+      if (!registrationCode || !registrationCode.verificationId) {
         return null
       }
 
-      return registrationCode
+      try {
+        await verifyCloudBaseEmailVerificationCode(registrationCode.verificationId, code)
+        return registrationCode
+      } catch (error) {
+        if (isInvalidVerificationCodeError(error)) {
+          return null
+        }
+
+        throw error
+      }
     },
     async () => {
       const registrationCodes = await readRegistrationCodes()
       const registrationCode = registrationCodes.find((item) => item.email === normalizedEmail)
 
-      if (
-        !registrationCode ||
-        !verifyPassword(code, registrationCode.codeSalt, registrationCode.codeHash)
-      ) {
+      if (!registrationCode || !registrationCode.verificationId) {
         return null
       }
 
-      return registrationCode
+      try {
+        await verifyCloudBaseEmailVerificationCode(registrationCode.verificationId, code)
+        return registrationCode
+      } catch (error) {
+        if (isInvalidVerificationCodeError(error)) {
+          return null
+        }
+
+        throw error
+      }
     }
   )
 }
@@ -558,16 +552,32 @@ export async function deleteRegistrationVerificationCode(id: string) {
 
 export async function resetPasswordWithCode(email: string, code: string, newPassword: string) {
   const normalizedEmail = normalizeEmail(email)
+  const resetCode = await withCloudBaseFallback(
+    'getPasswordResetCodeByEmail',
+    async () => getCloudResetCodeByEmail(normalizedEmail),
+    async () => {
+      const resetCodes = await readResetCodes()
+      return resetCodes.find((item) => item.email === normalizedEmail) ?? null
+    }
+  )
+
+  if (!resetCode || !resetCode.verificationId) {
+    return null
+  }
+
+  try {
+    await verifyCloudBaseEmailVerificationCode(resetCode.verificationId, code)
+  } catch (error) {
+    if (isInvalidVerificationCodeError(error)) {
+      return null
+    }
+
+    throw error
+  }
 
   return withCloudBaseFallback(
     'resetPasswordWithCode',
     async () => {
-      const resetCode = await getCloudResetCodeByEmail(normalizedEmail)
-
-      if (!resetCode || !verifyPassword(code, resetCode.codeSalt, resetCode.codeHash)) {
-        return null
-      }
-
       const user = await getCloudUserByEmail(normalizedEmail)
 
       if (!user) {
@@ -588,12 +598,6 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
     },
     async () => {
       const resetCodes = await readResetCodes()
-      const resetCode = resetCodes.find((item) => item.email === normalizedEmail)
-
-      if (!resetCode || !verifyPassword(code, resetCode.codeSalt, resetCode.codeHash)) {
-        return null
-      }
-
       const users = await readUsers()
       const userIndex = users.findIndex((user) => user.email === normalizedEmail)
 

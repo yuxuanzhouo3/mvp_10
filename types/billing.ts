@@ -1,5 +1,6 @@
 export type PaymentPlanId = 'pro_monthly' | 'pro_quarterly' | 'pro_yearly'
-export type CheckoutMode = 'external' | 'mock'
+export type PaymentMethod = 'default' | 'wechat'
+export type CheckoutMode = 'external' | 'mock' | 'wechat_native'
 export type PaymentStatus = 'created' | 'paid' | 'failed'
 
 export interface PaymentPlan {
@@ -18,8 +19,14 @@ export interface CheckoutSession {
   amount: number
   currency: string
   mode: CheckoutMode
+  paymentMethod: PaymentMethod
   status: PaymentStatus
   createdAt: string
   paidAt: string | null
   externalUrl: string | null
+  codeUrl: string | null
+  outTradeNo: string | null
+  expiresAt: string | null
+  transactionId: string | null
+  isMock: boolean
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { io, Socket } from 'socket.io-client'
+import type { Socket } from 'socket.io-client'
 
 interface WebSocketContextType {
   socket: Socket | null
@@ -16,33 +16,52 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false)
 
   useEffect(() => {
-    // Initialize WebSocket connection
-    const newSocket = io(process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000', {
-      transports: ['websocket'],
-      autoConnect: false,
-    })
+    const socketUrl = process.env.NEXT_PUBLIC_WS_URL?.trim()
 
-    newSocket.on('connect', () => {
-      console.log('WebSocket connected')
-      setConnected(true)
-    })
+    if (!socketUrl) {
+      return
+    }
 
-    newSocket.on('disconnect', () => {
-      console.log('WebSocket disconnected')
-      setConnected(false)
-    })
+    let disposed = false
+    let activeSocket: Socket | null = null
 
-    newSocket.on('error', (error) => {
-      console.error('WebSocket error:', error)
-    })
+    void import('socket.io-client')
+      .then(({ io }) => {
+        if (disposed) {
+          return
+        }
 
-    setSocket(newSocket)
+        const newSocket = io(socketUrl, {
+          transports: ['websocket'],
+          autoConnect: false,
+        })
 
-    // Connect when component mounts
-    newSocket.connect()
+        newSocket.on('connect', () => {
+          setConnected(true)
+        })
+
+        newSocket.on('disconnect', () => {
+          setConnected(false)
+        })
+
+        newSocket.on('error', (error) => {
+          console.error('WebSocket error:', error)
+        })
+
+        activeSocket = newSocket
+        setSocket(newSocket)
+        newSocket.connect()
+      })
+      .catch((error) => {
+        console.error('WebSocket initialization failed:', error)
+      })
 
     return () => {
-      newSocket.disconnect()
+      disposed = true
+
+      if (activeSocket) {
+        activeSocket.disconnect()
+      }
     }
   }, [])
 

@@ -14,7 +14,8 @@ import {
 } from 'lucide-react'
 
 import { getStoredAuthToken, useAuth } from './AuthProvider'
-import type { PaymentPlan } from '@/types/billing'
+import { WechatPaymentDialog } from './WechatPaymentDialog'
+import type { PaymentMethod, PaymentPlan } from '@/types/billing'
 
 const SETTINGS_NAV_ITEMS = [
   { key: 'profile', label: 'Profile', icon: User },
@@ -29,8 +30,16 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState('profile')
   const [isEditing, setIsEditing] = useState(false)
   const [plans, setPlans] = useState<PaymentPlan[]>([])
-  const [billingLoading, setBillingLoading] = useState(false)
+  const [billingActionKey, setBillingActionKey] = useState<string | null>(null)
   const [billingMessage, setBillingMessage] = useState('')
+  const [activeWechatCheckout, setActiveWechatCheckout] = useState<{
+    amount: number
+    checkoutSessionId: string
+    codeUrl: string
+    expiresAt: string | null
+    isMock: boolean
+    planName: string
+  } | null>(null)
   const [formData, setFormData] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -53,6 +62,16 @@ export function Settings() {
       industries: user?.preferences.industries || current.industries,
     }))
   }, [user])
+
+  const priceFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('zh-CN', {
+        style: 'currency',
+        currency: 'CNY',
+        maximumFractionDigits: 0,
+      }),
+    []
+  )
 
   useEffect(() => {
     void loadPlans()
@@ -116,8 +135,15 @@ export function Settings() {
     setBillingMessage('Profile editing is local-only in this MVP. Auth and billing are now backed by APIs.')
   }
 
-  async function startUpgrade(planId: PaymentPlan['id']) {
+  async function handleWechatPaid() {
+    await refreshUser()
+    setActiveWechatCheckout(null)
+    setBillingMessage('微信支付成功，当前账号已升级为 Pro。')
+  }
+
+  async function startUpgrade(planId: PaymentPlan['id'], paymentMethod: PaymentMethod = 'default') {
     const token = getStoredAuthToken()
+    const actionKey = `${planId}:${paymentMethod}`
 
     if (!token) {
       setBillingMessage('Please sign in again before starting checkout.')
@@ -125,7 +151,7 @@ export function Settings() {
     }
 
     try {
-      setBillingLoading(true)
+      setBillingActionKey(actionKey)
       setBillingMessage('')
 
       const response = await fetch('/api/billing/checkout', {
@@ -134,18 +160,43 @@ export function Settings() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, paymentMethod }),
       })
 
       const checkout = (await response.json()) as {
         id?: string
-        mode?: 'external' | 'mock'
+        amount?: number
+        mode?: 'external' | 'mock' | 'wechat_native'
+        paymentMethod?: PaymentMethod
         externalUrl?: string | null
+        codeUrl?: string | null
+        expiresAt?: string | null
+        isMock?: boolean
+        status?: 'created' | 'paid' | 'failed'
         error?: string
       }
 
       if (!response.ok || !checkout.id || !checkout.mode) {
         throw new Error(checkout.error || 'Checkout creation failed.')
+      }
+
+      if (checkout.mode === 'wechat_native' && checkout.codeUrl) {
+        const selectedPlan = plans.find((plan) => plan.id === planId)
+
+        setActiveWechatCheckout({
+          amount: checkout.amount ?? selectedPlan?.amount ?? 0,
+          checkoutSessionId: checkout.id,
+          codeUrl: checkout.codeUrl,
+          expiresAt: checkout.expiresAt ?? null,
+          isMock: Boolean(checkout.isMock),
+          planName: selectedPlan?.name ?? 'Pro Membership',
+        })
+        setBillingMessage(
+          checkout.isMock
+            ? '微信支付弹层已打开，当前是本地模拟模式。'
+            : '微信支付二维码已生成，请扫码完成支付。'
+        )
+        return
       }
 
       if (checkout.mode === 'external' && checkout.externalUrl) {
@@ -174,7 +225,7 @@ export function Settings() {
     } catch (error) {
       setBillingMessage(error instanceof Error ? error.message : 'Billing action failed.')
     } finally {
-      setBillingLoading(false)
+      setBillingActionKey(null)
     }
   }
 
@@ -307,29 +358,48 @@ export function Settings() {
                 <div className="mt-4 rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
                   <p>Current plan: {currentPlanLabel}</p>
                   <p>Billing status: {user?.billingStatus || 'inactive'}</p>
-                  <p className="mt-2">
-                    If `PAYMENT_CHECKOUT_URL_TEMPLATE` is not configured, checkout runs in local mock mode so the full flow remains testable.
-                  </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {plans.map((plan) => (
                   <div key={plan.id} className="card">
-                    <h4 className="text-lg font-semibold text-gray-900">{plan.name}</h4>
-                    <p className="mt-2 text-3xl font-bold text-primary-700">
-                      ${plan.amount}
-                    </p>
-                    <p className="text-sm text-gray-500 mt-1">per {plan.interval}</p>
-                    <p className="text-sm text-gray-600 mt-4">{plan.description}</p>
-                    <button
-                      onClick={() => void startUpgrade(plan.id)}
-                      disabled={billingLoading}
-                      className="btn-primary w-full mt-6 flex items-center justify-center space-x-2"
-                    >
-                      {billingLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                      <span>{billingLoading ? 'Processing...' : 'Choose Plan'}</span>
-                    </button>
+                    {(() => {
+                      const wechatActionKey = `${plan.id}:wechat`
+                      const defaultActionKey = `${plan.id}:default`
+                      const isWechatLoading = billingActionKey === wechatActionKey
+                      const isDefaultLoading = billingActionKey === defaultActionKey
+                      const isAnyBillingLoading = billingActionKey !== null
+
+                      return (
+                        <>
+                          <h4 className="text-lg font-semibold text-gray-900">{plan.name}</h4>
+                          <p className="mt-2 text-3xl font-bold text-primary-700">
+                            {priceFormatter.format(plan.amount)}
+                          </p>
+                          <p className="text-sm text-gray-500 mt-1">每 {plan.interval}</p>
+                          <p className="text-sm text-gray-600 mt-4">{plan.description}</p>
+                          <div className="mt-6 space-y-3">
+                            <button
+                              onClick={() => void startUpgrade(plan.id, 'wechat')}
+                              disabled={isAnyBillingLoading}
+                              className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#07c160] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#06ad56] disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              {isWechatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                              <span>{isWechatLoading ? '处理中...' : '微信支付'}</span>
+                            </button>
+                            <button
+                              onClick={() => void startUpgrade(plan.id, 'default')}
+                              disabled={isAnyBillingLoading}
+                              className="btn-secondary w-full flex items-center justify-center space-x-2"
+                            >
+                              {isDefaultLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                              <span>{isDefaultLoading ? '处理中...' : '原有流程'}</span>
+                            </button>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
                 ))}
               </div>
@@ -405,6 +475,20 @@ export function Settings() {
           )}
         </div>
       </div>
+
+      {activeWechatCheckout && (
+        <WechatPaymentDialog
+          amount={activeWechatCheckout.amount}
+          checkoutSessionId={activeWechatCheckout.checkoutSessionId}
+          codeUrl={activeWechatCheckout.codeUrl}
+          expiresAt={activeWechatCheckout.expiresAt}
+          isMock={activeWechatCheckout.isMock}
+          open={Boolean(activeWechatCheckout)}
+          planName={activeWechatCheckout.planName}
+          onClose={() => setActiveWechatCheckout(null)}
+          onPaid={handleWechatPaid}
+        />
+      )}
     </div>
   )
 }

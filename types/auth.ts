@@ -35,8 +35,7 @@ export interface AuthSession {
 export interface OneTimeCodeRecord {
   id: string
   email: string
-  codeHash: string
-  codeSalt: string
+  verificationId: string
   createdAt: string
   expiresAt: string
 }

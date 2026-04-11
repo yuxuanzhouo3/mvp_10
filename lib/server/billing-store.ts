@@ -8,7 +8,7 @@ import {
   withCloudBaseFallback,
   writeLocalJsonFile,
 } from '@/lib/server/cloudbase'
-import type { CheckoutSession, PaymentPlan, PaymentPlanId } from '@/types/billing'
+import type { CheckoutSession, PaymentMethod, PaymentPlan, PaymentPlanId } from '@/types/billing'
 
 const CHECKOUTS_FILE = path.join(process.cwd(), 'data', 'billing', 'checkouts.json')
 const BILLING_CHECKOUTS_COLLECTION = 'billing_checkouts'
@@ -16,27 +16,27 @@ const BILLING_CHECKOUTS_COLLECTION = 'billing_checkouts'
 export const PAYMENT_PLANS: PaymentPlan[] = [
   {
     id: 'pro_monthly',
-    name: 'Pro Monthly',
+    name: 'Pro 月付',
     amount: 29,
-    currency: 'USD',
+    currency: 'CNY',
     interval: 'month',
-    description: 'Monthly access to premium recruiting workflows.',
+    description: '按月开通高级招聘工作流与 AI 服务。',
   },
   {
     id: 'pro_quarterly',
-    name: 'Pro Quarterly',
+    name: 'Pro 季付',
     amount: 69,
-    currency: 'USD',
+    currency: 'CNY',
     interval: 'quarter',
-    description: 'Quarterly plan with lower effective monthly cost.',
+    description: '按季度购买，折合单月成本更低。',
   },
   {
     id: 'pro_yearly',
-    name: 'Pro Yearly',
+    name: 'Pro 年付',
     amount: 199,
-    currency: 'USD',
+    currency: 'CNY',
     interval: 'year',
-    description: 'Annual plan for teams operating the platform long-term.',
+    description: '适合长期使用团队的年度会员方案。',
   },
 ]
 
@@ -63,11 +63,28 @@ export async function listCheckoutSessions() {
   )
 }
 
+export async function getCheckoutSessionById(id: string) {
+  return withCloudBaseFallback(
+    'getCheckoutSessionById',
+    async () => getCloudDocumentById<CheckoutSession>(BILLING_CHECKOUTS_COLLECTION, id),
+    async () => {
+      const checkouts = await readCheckoutSessions()
+      return checkouts.find((session) => session.id === id) ?? null
+    }
+  )
+}
+
 export async function createCheckoutSession(input: {
   userId: string
   planId: PaymentPlanId
   externalUrl?: string | null
-  mode: 'external' | 'mock'
+  codeUrl?: string | null
+  outTradeNo?: string | null
+  expiresAt?: string | null
+  transactionId?: string | null
+  mode: CheckoutSession['mode']
+  paymentMethod?: PaymentMethod
+  isMock?: boolean
 }) {
   const plan = getPaymentPlan(input.planId)
 
@@ -83,10 +100,16 @@ export async function createCheckoutSession(input: {
     amount: plan.amount,
     currency: plan.currency,
     mode: input.mode,
+    paymentMethod: input.paymentMethod ?? 'default',
     status: 'created',
     createdAt: new Date().toISOString(),
     paidAt: null,
     externalUrl: input.externalUrl ?? null,
+    codeUrl: input.codeUrl ?? null,
+    outTradeNo: input.outTradeNo ?? null,
+    expiresAt: input.expiresAt ?? null,
+    transactionId: input.transactionId ?? null,
+    isMock: input.isMock ?? input.mode === 'mock',
   }
 
   await withCloudBaseFallback(

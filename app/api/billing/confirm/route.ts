@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 
 import { requireAuthenticatedUser } from '@/lib/server/auth-helpers'
-import { getPaymentPlan, updateCheckoutSession } from '@/lib/server/billing-store'
-import { updateUser } from '@/lib/server/auth-store'
+import { activateCheckoutSession, getOwnedCheckoutSession } from '@/lib/server/billing-service'
+import { queryWechatPaymentStatus } from '@/lib/server/wechat-pay'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,32 +16,53 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Checkout session id is required.' }, { status: 400 })
     }
 
-    const checkout = await updateCheckoutSession(body.checkoutSessionId, (session) => {
-      if (session.userId !== user.id) {
-        throw new Error('Checkout session does not belong to this user.')
-      }
-
-      return {
-        ...session,
-        status: 'paid',
-        paidAt: new Date().toISOString(),
-      }
-    })
-
-    if (!checkout) {
+    const ownedCheckout = await getOwnedCheckoutSession(body.checkoutSessionId, user.id)
+    if (!ownedCheckout) {
       return NextResponse.json({ error: 'Checkout session not found.' }, { status: 404 })
     }
 
-    const plan = getPaymentPlan(checkout.planId)
-    const upgradedUser = await updateUser(user.id, (current) => ({
-      ...current,
-      plan: plan ? 'pro' : current.plan,
-      billingStatus: 'active',
-    }))
+    if (ownedCheckout.paymentMethod === 'wechat' && ownedCheckout.mode === 'wechat_native' && !ownedCheckout.isMock) {
+      if (!ownedCheckout.outTradeNo) {
+        return NextResponse.json({ error: 'WeChat order number is missing.' }, { status: 400 })
+      }
+
+      const paymentStatus = await queryWechatPaymentStatus(ownedCheckout.outTradeNo)
+      if (paymentStatus.tradeState !== 'SUCCESS') {
+        return NextResponse.json(
+          {
+            error: 'WeChat payment has not completed yet.',
+            tradeState: paymentStatus.tradeState,
+          },
+          { status: 409 }
+        )
+      }
+
+      const result = await activateCheckoutSession({
+        checkoutSessionId: ownedCheckout.id,
+        userId: user.id,
+        transactionId: paymentStatus.transactionId,
+        paidAt: paymentStatus.successTime,
+      })
+
+      if (!result) {
+        return NextResponse.json({ error: 'Checkout session not found.' }, { status: 404 })
+      }
+
+      return NextResponse.json(result)
+    }
+
+    const result = await activateCheckoutSession({
+      checkoutSessionId: ownedCheckout.id,
+      userId: user.id,
+    })
+
+    if (!result) {
+      return NextResponse.json({ error: 'Checkout session not found.' }, { status: 404 })
+    }
 
     return NextResponse.json({
-      checkout,
-      user: upgradedUser,
+      checkout: result.checkout,
+      user: result.user,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Payment confirmation failed.'

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ChevronDown, Loader2, PlayCircle, Save, Send, Sparkles } from 'lucide-react'
+import { AlertCircle, ArrowRight, ChevronDown, Loader2, PlayCircle, Save, Send, Sparkles } from 'lucide-react'
 
 import { getStoredAuthToken } from './AuthProvider'
 import type { ApplicationRecord } from '@/types/application'
@@ -205,6 +205,7 @@ export function CandidateAssessmentCenter() {
     activeQuestion && activeRecord
       ? activeRecord.answers.find((answer) => answer.questionId === activeQuestion.id) ?? null
       : null
+  const hasNextQuestion = activeRecord ? activeQuestionIndex < activeRecord.questions.length - 1 : false
 
   const practiceOptions = useMemo(() => {
     return applications.map((application) => ({
@@ -245,6 +246,14 @@ export function CandidateAssessmentCenter() {
     }
 
     setRecords((current) => syncRecord(current, nextRecord))
+  }
+
+  function goToNextQuestion() {
+    if (!activeRecord) {
+      return
+    }
+
+    setActiveQuestionIndex((current) => Math.min(current + 1, activeRecord.questions.length - 1))
   }
 
   async function createPracticeAssessment() {
@@ -553,8 +562,21 @@ export function CandidateAssessmentCenter() {
               </div>
 
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-                <p className="text-sm font-medium text-slate-500">当前题目</p>
-                <h4 className="mt-2 text-lg font-semibold leading-8 text-slate-900">{activeQuestion.prompt}</h4>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-500">当前题目</p>
+                    <h4 className="mt-2 text-lg font-semibold leading-8 text-slate-900">{activeQuestion.prompt}</h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goToNextQuestion}
+                    disabled={!hasNextQuestion}
+                    className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <span>{hasNextQuestion ? `下一题 · 第 ${activeQuestionIndex + 2} 题` : '已是最后一题'}</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
                 <textarea
                   rows={10}
                   value={activeAnswer.answer}
