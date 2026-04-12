@@ -1,6 +1,5 @@
-import path from 'path'
-
 import {
+  getLocalDataPath,
   getCloudDocumentById,
   listCloudDocuments,
   putCloudDocument,
@@ -11,7 +10,7 @@ import {
 import { normalizeOrganizationLead } from '@/lib/server/organization-defaults'
 import type { OrganizationLead } from '@/types/organization'
 
-const INDEX_FILE = path.join(process.cwd(), 'data', 'organizations', 'index.json')
+const INDEX_FILE = getLocalDataPath('organizations', 'index.json')
 const ORGANIZATIONS_COLLECTION = 'organizations'
 
 async function readOrganizationLeads() {

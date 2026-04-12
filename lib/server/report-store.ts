@@ -1,6 +1,5 @@
-import path from 'path'
-
 import {
+  getLocalDataPath,
   getCloudDocumentById,
   listCloudDocuments,
   putCloudDocument,
@@ -10,7 +9,7 @@ import {
 } from '@/lib/server/cloudbase'
 import type { ModerationReport } from '@/types/report'
 
-const INDEX_FILE = path.join(process.cwd(), 'data', 'reports', 'index.json')
+const INDEX_FILE = getLocalDataPath('reports', 'index.json')
 const REPORTS_COLLECTION = 'reports'
 
 async function readReports() {

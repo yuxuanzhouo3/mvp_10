@@ -1,6 +1,5 @@
-import path from 'path'
-
 import {
+  getLocalDataPath,
   getCloudDocumentById,
   listCloudDocuments,
   putCloudDocument,
@@ -10,7 +9,7 @@ import {
 } from '@/lib/server/cloudbase'
 import type { CheckoutSession, PaymentMethod, PaymentPlan, PaymentPlanId } from '@/types/billing'
 
-const CHECKOUTS_FILE = path.join(process.cwd(), 'data', 'billing', 'checkouts.json')
+const CHECKOUTS_FILE = getLocalDataPath('billing', 'checkouts.json')
 const BILLING_CHECKOUTS_COLLECTION = 'billing_checkouts'
 
 export const PAYMENT_PLANS: PaymentPlan[] = [

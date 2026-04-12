@@ -1,8 +1,8 @@
 import path from 'path'
 
-import { readLocalJsonFile, writeLocalJsonFile } from '@/lib/server/cloudbase'
+import { getLocalDataPath, readLocalJsonFile, writeLocalJsonFile } from '@/lib/server/cloudbase'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'auth')
+const DATA_DIR = getLocalDataPath('auth')
 const RATE_LIMIT_FILE = path.join(DATA_DIR, 'code-send-rate-limits.json')
 const RATE_LIMIT_WINDOW_MS = 1000 * 60
 const RATE_LIMIT_RETENTION_MS = 1000 * 60 * 60 * 24

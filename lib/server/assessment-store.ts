@@ -1,6 +1,7 @@
 import path from 'path'
 
 import {
+  getLocalDataPath,
   getCloudDocumentById,
   listCloudDocuments,
   putCloudDocument,
@@ -10,7 +11,7 @@ import {
 } from '@/lib/server/cloudbase'
 import type { AssessmentAudioAsset, AssessmentAnswer, AssessmentRecord } from '@/types/assessment'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'assessments')
+const DATA_DIR = getLocalDataPath('assessments')
 const INDEX_FILE = path.join(DATA_DIR, 'index.json')
 const ASSESSMENTS_COLLECTION = 'assessments'
 

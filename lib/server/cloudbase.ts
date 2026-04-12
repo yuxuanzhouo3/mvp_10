@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs'
+import os from 'os'
 import path from 'path'
 
 import * as cloudbase from '@cloudbase/node-sdk'
@@ -28,6 +29,22 @@ function trimEnvValue(value: string | undefined) {
 
 function shouldPreferLocalStorage() {
   return trimEnvValue(process.env.CLOUDBASE_PREFER_LOCAL) === '1'
+}
+
+function getDefaultLocalDataRoot() {
+  if (process.env.NODE_ENV === 'production') {
+    return path.join(os.tmpdir(), 'mvp_10-data')
+  }
+
+  return path.join(process.cwd(), 'data')
+}
+
+export function getLocalDataRoot() {
+  return trimEnvValue(process.env.LOCAL_DATA_DIR) || getDefaultLocalDataRoot()
+}
+
+export function getLocalDataPath(...segments: string[]) {
+  return path.join(getLocalDataRoot(), ...segments)
 }
 
 function getCloudBaseAppConfig(): cloudbase.ICloudBaseConfig | null {

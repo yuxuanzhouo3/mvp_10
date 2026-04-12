@@ -1,6 +1,5 @@
-import path from 'path'
-
 import {
+  getLocalDataPath,
   getCloudDocumentById,
   listCloudDocuments,
   putCloudDocument,
@@ -11,7 +10,7 @@ import {
 import { normalizeCityLocation } from '@/lib/location'
 import type { JobRecord, JobStatus } from '@/types/job'
 
-const INDEX_FILE = path.join(process.cwd(), 'data', 'jobs', 'index.json')
+const INDEX_FILE = getLocalDataPath('jobs', 'index.json')
 const JOBS_COLLECTION = 'jobs'
 
 const DEFAULT_JOBS: JobRecord[] = [

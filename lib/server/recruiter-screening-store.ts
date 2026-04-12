@@ -1,7 +1,6 @@
-import path from 'path'
-
 import {
   findCloudDocument,
+  getLocalDataPath,
   listCloudDocuments,
   putCloudDocument,
   readLocalJsonFile,
@@ -10,7 +9,7 @@ import {
 } from '@/lib/server/cloudbase'
 import type { RecruiterScreeningRecord } from '@/types/screening'
 
-const INDEX_FILE = path.join(process.cwd(), 'data', 'recruiter-screenings', 'index.json')
+const INDEX_FILE = getLocalDataPath('recruiter-screenings', 'index.json')
 const RECRUITER_SCREENINGS_COLLECTION = 'recruiter_screenings'
 
 async function readRecruiterScreenings() {

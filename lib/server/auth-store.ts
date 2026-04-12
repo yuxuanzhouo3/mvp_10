@@ -5,6 +5,7 @@ import {
   deleteCloudDocument,
   findCloudDocument,
   getCloudDocumentById,
+  getLocalDataPath,
   listCloudDocuments,
   putCloudDocument,
   readLocalJsonFile,
@@ -25,7 +26,7 @@ import type {
   UserPreferences,
 } from '@/types/auth'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'auth')
+const DATA_DIR = getLocalDataPath('auth')
 const USERS_FILE = path.join(DATA_DIR, 'users.json')
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json')
 const RESET_CODES_FILE = path.join(DATA_DIR, 'reset-codes.json')

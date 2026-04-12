@@ -2,6 +2,7 @@ import path from 'path'
 
 import {
   ensureLocalDir,
+  getLocalDataPath,
   getCloudDocumentById,
   listCloudDocuments,
   putCloudDocument,
@@ -14,7 +15,7 @@ import {
 import { normalizeResumeRecord } from '@/lib/server/resume-defaults'
 import type { ResumeListItem, ResumeRecord, ResumeStorageProvider } from '@/types/resume'
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'resumes')
+const DATA_DIR = getLocalDataPath('resumes')
 const FILES_DIR = path.join(DATA_DIR, 'files')
 const INDEX_FILE = path.join(DATA_DIR, 'index.json')
 const RESUMES_COLLECTION = 'resumes'

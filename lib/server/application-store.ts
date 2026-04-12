@@ -1,7 +1,6 @@
-import path from 'path'
-
 import {
   findCloudDocument,
+  getLocalDataPath,
   getCloudDocumentById,
   listCloudDocuments,
   putCloudDocument,
@@ -11,7 +10,7 @@ import {
 } from '@/lib/server/cloudbase'
 import type { ApplicationRecord } from '@/types/application'
 
-const INDEX_FILE = path.join(process.cwd(), 'data', 'applications', 'index.json')
+const INDEX_FILE = getLocalDataPath('applications', 'index.json')
 const APPLICATIONS_COLLECTION = 'applications'
 
 async function readApplications() {
