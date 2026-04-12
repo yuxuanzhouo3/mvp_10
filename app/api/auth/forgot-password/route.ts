@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 
 import { createPasswordResetCode, getUserByEmail } from '@/lib/server/auth-store'
 import {
+  createLocalVerificationCode,
+  isCloudBaseAuthConfigured,
   isCloudBaseAuthVerificationError,
   sendCloudBaseEmailVerification,
 } from '@/lib/server/cloudbase-auth-verification'
@@ -36,12 +38,30 @@ export async function POST(request: Request) {
 
     await assertCodeSendAllowed('reset-password', normalizedEmail)
 
-    const verification = await sendCloudBaseEmailVerification(normalizedEmail)
-    await createPasswordResetCode(
-      normalizedEmail,
-      verification.verificationId,
-      verification.expiresIn
-    )
+    const cloudBaseConfigured = isCloudBaseAuthConfigured()
+
+    if (cloudBaseConfigured) {
+      const verification = await sendCloudBaseEmailVerification(normalizedEmail)
+      await createPasswordResetCode(
+        normalizedEmail,
+        verification.verificationId,
+        verification.expiresIn
+      )
+    } else {
+      const localCode = createLocalVerificationCode()
+      await createPasswordResetCode(
+        normalizedEmail,
+        `local:${crypto.randomUUID()}`,
+        600,
+        localCode
+      )
+      await recordCodeSend('reset-password', normalizedEmail)
+
+      return NextResponse.json({
+        message: `CloudBase 未配置，当前走临时本地验证码模式。验证码：${localCode}（10 分钟内有效）`,
+      })
+    }
+
     await recordCodeSend('reset-password', normalizedEmail)
 
     return NextResponse.json({

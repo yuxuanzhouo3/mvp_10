@@ -69,6 +69,22 @@ function verifyPassword(password: string, salt: string, expectedHash: string) {
   return timingSafeEqual(actualHash, expectedBuffer)
 }
 
+function hashOneTimeCode(code: string, salt = randomBytes(16).toString('hex')) {
+  const codeHash = scryptSync(code, salt, 64).toString('hex')
+  return { codeHash, codeSalt: salt }
+}
+
+function verifyOneTimeCode(code: string, salt: string, expectedHash: string) {
+  const actualHash = scryptSync(code, salt, 64)
+  const expectedBuffer = Buffer.from(expectedHash, 'hex')
+
+  if (actualHash.length !== expectedBuffer.length) {
+    return false
+  }
+
+  return timingSafeEqual(actualHash, expectedBuffer)
+}
+
 function isExpired(isoTimestamp: string) {
   return new Date(isoTimestamp).getTime() <= Date.now()
 }
@@ -409,7 +425,8 @@ function isInvalidVerificationCodeError(error: unknown) {
 export async function createPasswordResetCode(
   email: string,
   verificationId: string,
-  expiresInSeconds = 600
+  expiresInSeconds = 600,
+  localCode?: string
 ) {
   const normalizedEmail = normalizeEmail(email)
   const record: PasswordResetCode = {
@@ -418,6 +435,7 @@ export async function createPasswordResetCode(
     verificationId,
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+    ...(localCode ? hashOneTimeCode(localCode) : {}),
   }
 
   await withCloudBaseFallback(
@@ -447,7 +465,8 @@ export async function createPasswordResetCode(
 export async function createRegistrationVerificationCode(
   email: string,
   verificationId: string,
-  expiresInSeconds = 600
+  expiresInSeconds = 600,
+  localCode?: string
 ) {
   const normalizedEmail = normalizeEmail(email)
   const existingUser = await getUserByEmail(normalizedEmail)
@@ -462,6 +481,7 @@ export async function createRegistrationVerificationCode(
     verificationId,
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+    ...(localCode ? hashOneTimeCode(localCode) : {}),
   }
 
   await withCloudBaseFallback(
@@ -491,6 +511,30 @@ export async function createRegistrationVerificationCode(
   return { record }
 }
 
+async function verifyStoredOneTimeCode(
+  record: Pick<RegistrationVerificationCode, 'verificationId' | 'localCodeHash' | 'localCodeSalt'>,
+  code: string
+) {
+  if (record.localCodeHash && record.localCodeSalt) {
+    return verifyOneTimeCode(code, record.localCodeSalt, record.localCodeHash)
+  }
+
+  if (!record.verificationId) {
+    return false
+  }
+
+  try {
+    await verifyCloudBaseEmailVerificationCode(record.verificationId, code)
+    return true
+  } catch (error) {
+    if (isInvalidVerificationCodeError(error)) {
+      return false
+    }
+
+    throw error
+  }
+}
+
 export async function verifyRegistrationCode(email: string, code: string) {
   const normalizedEmail = normalizeEmail(email)
 
@@ -499,39 +543,29 @@ export async function verifyRegistrationCode(email: string, code: string) {
     async () => {
       const registrationCode = await getCloudRegistrationCodeByEmail(normalizedEmail)
 
-      if (!registrationCode || !registrationCode.verificationId) {
+      if (!registrationCode) {
         return null
       }
 
-      try {
-        await verifyCloudBaseEmailVerificationCode(registrationCode.verificationId, code)
+      if (await verifyStoredOneTimeCode(registrationCode, code)) {
         return registrationCode
-      } catch (error) {
-        if (isInvalidVerificationCodeError(error)) {
-          return null
-        }
-
-        throw error
       }
+
+      return null
     },
     async () => {
       const registrationCodes = await readRegistrationCodes()
       const registrationCode = registrationCodes.find((item) => item.email === normalizedEmail)
 
-      if (!registrationCode || !registrationCode.verificationId) {
+      if (!registrationCode) {
         return null
       }
 
-      try {
-        await verifyCloudBaseEmailVerificationCode(registrationCode.verificationId, code)
+      if (await verifyStoredOneTimeCode(registrationCode, code)) {
         return registrationCode
-      } catch (error) {
-        if (isInvalidVerificationCodeError(error)) {
-          return null
-        }
-
-        throw error
       }
+
+      return null
     }
   )
 }
@@ -561,18 +595,12 @@ export async function resetPasswordWithCode(email: string, code: string, newPass
     }
   )
 
-  if (!resetCode || !resetCode.verificationId) {
+  if (!resetCode) {
     return null
   }
 
-  try {
-    await verifyCloudBaseEmailVerificationCode(resetCode.verificationId, code)
-  } catch (error) {
-    if (isInvalidVerificationCodeError(error)) {
-      return null
-    }
-
-    throw error
+  if (!(await verifyStoredOneTimeCode(resetCode, code))) {
+    return null
   }
 
   return withCloudBaseFallback(

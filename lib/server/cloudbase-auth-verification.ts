@@ -1,3 +1,5 @@
+import { randomInt } from 'crypto'
+
 const DEFAULT_EXPIRES_IN_SECONDS = 600
 
 interface CloudBaseSendVerificationResponse {
@@ -32,6 +34,17 @@ export class CloudBaseAuthVerificationError extends Error {
 function trimEnvValue(value: string | undefined) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
+}
+
+export function isCloudBaseAuthConfigured() {
+  return Boolean(
+    trimEnvValue(process.env.CLOUDBASE_AUTH_BASE_URL) ||
+      trimEnvValue(process.env.CLOUDBASE_ENV_ID)
+  )
+}
+
+export function createLocalVerificationCode() {
+  return randomInt(0, 1000000).toString().padStart(6, '0')
 }
 
 function getCloudBaseAuthBaseUrl() {

@@ -38,6 +38,8 @@ export interface OneTimeCodeRecord {
   verificationId: string
   createdAt: string
   expiresAt: string
+  localCodeHash?: string
+  localCodeSalt?: string
 }
 
 export interface PasswordResetCode extends OneTimeCodeRecord {}
