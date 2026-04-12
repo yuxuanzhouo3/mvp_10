@@ -6,6 +6,7 @@ import {
   isCloudBaseAuthConfigured,
   isCloudBaseAuthVerificationError,
   sendCloudBaseEmailVerification,
+  shouldFallbackToLocalVerification,
 } from '@/lib/server/cloudbase-auth-verification'
 import { assertCodeSendAllowed, recordCodeSend } from '@/lib/server/code-send-rate-limit'
 
@@ -15,6 +16,17 @@ export const dynamic = 'force-dynamic'
 function getCooldownMessage(message: string) {
   const match = message.match(/Please wait (\d+) seconds before requesting another verification code\./)
   return match ? `Please wait ${match[1]} seconds before requesting another verification code.` : null
+}
+
+async function sendLocalResetCode(email: string) {
+  const localCode = createLocalVerificationCode()
+
+  await createPasswordResetCode(email, `local:${crypto.randomUUID()}`, 600, localCode)
+  await recordCodeSend('reset-password', email)
+
+  return NextResponse.json({
+    message: `CloudBase email delivery is unavailable right now. Use this local test code: ${localCode} (valid for 10 minutes).`,
+  })
 }
 
 export async function POST(request: Request) {
@@ -38,28 +50,28 @@ export async function POST(request: Request) {
 
     await assertCodeSendAllowed('reset-password', normalizedEmail)
 
-    const cloudBaseConfigured = isCloudBaseAuthConfigured()
+    if (!isCloudBaseAuthConfigured()) {
+      return sendLocalResetCode(normalizedEmail)
+    }
 
-    if (cloudBaseConfigured) {
+    try {
       const verification = await sendCloudBaseEmailVerification(normalizedEmail)
       await createPasswordResetCode(
         normalizedEmail,
         verification.verificationId,
         verification.expiresIn
       )
-    } else {
-      const localCode = createLocalVerificationCode()
-      await createPasswordResetCode(
-        normalizedEmail,
-        `local:${crypto.randomUUID()}`,
-        600,
-        localCode
-      )
-      await recordCodeSend('reset-password', normalizedEmail)
+    } catch (error) {
+      if (!shouldFallbackToLocalVerification(error)) {
+        throw error
+      }
 
-      return NextResponse.json({
-        message: `CloudBase 未配置，当前走临时本地验证码模式。验证码：${localCode}（10 分钟内有效）`,
-      })
+      console.warn(
+        '[auth] forgot-password fell back to local verification:',
+        error instanceof Error ? error.message : error
+      )
+
+      return sendLocalResetCode(normalizedEmail)
     }
 
     await recordCodeSend('reset-password', normalizedEmail)

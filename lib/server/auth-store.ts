@@ -71,8 +71,8 @@ function verifyPassword(password: string, salt: string, expectedHash: string) {
 }
 
 function hashOneTimeCode(code: string, salt = randomBytes(16).toString('hex')) {
-  const codeHash = scryptSync(code, salt, 64).toString('hex')
-  return { codeHash, codeSalt: salt }
+  const localCodeHash = scryptSync(code, salt, 64).toString('hex')
+  return { localCodeHash, localCodeSalt: salt }
 }
 
 function verifyOneTimeCode(code: string, salt: string, expectedHash: string) {

@@ -119,6 +119,42 @@ export function isCloudBaseAuthVerificationError(error: unknown): error is Cloud
   return error instanceof CloudBaseAuthVerificationError
 }
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  return String(error)
+}
+
+export function shouldFallbackToLocalVerification(error: unknown) {
+  const message = getErrorMessage(error)
+
+  if (
+    /fetch failed|failed to fetch|network|timeout|timed out|enotfound|econnrefused|getaddrinfo/i.test(
+      message
+    )
+  ) {
+    return true
+  }
+
+  if (!isCloudBaseAuthVerificationError(error)) {
+    return false
+  }
+
+  if (error.status >= 500 || error.status === 404) {
+    return true
+  }
+
+  if (error.status !== 400) {
+    return false
+  }
+
+  return /provider|endpoint|client[_\s-]?id|not found|not configured|configuration|unsupported/i.test(
+    `${error.code} ${message}`
+  )
+}
+
 export async function sendCloudBaseEmailVerification(email: string) {
   const response = await postToCloudBaseAuth<CloudBaseSendVerificationResponse>(
     '/auth/v1/verification',
