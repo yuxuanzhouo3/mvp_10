@@ -61,6 +61,13 @@ An AI-powered job search platform with intelligent matching, resume analysis, an
    NEXT_PUBLIC_WS_URL=ws://localhost:8000
    ```
 
+### Edition Switch
+
+- `CN=1` means the CN edition. It uses CloudBase as the remote data source and keeps the existing WeChat Pay flow.
+- `CN=0` means the global edition. It switches the remote data source to Supabase and hides the WeChat Pay entry.
+- When `CN=0`, the server expects `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_DOCUMENTS_TABLE`, and `SUPABASE_STORAGE_BUCKET`.
+- The Supabase bootstrap SQL is in `supabase/schema.sql`. Run it once in the Supabase SQL editor before starting the global edition.
+
 4. **Run the development server**
    ```bash
    npm run dev

@@ -1,6 +1,5 @@
-import nodemailer from 'nodemailer'
-
 import { buildContactOptionHtml, buildContactOptionTextLines } from '@/lib/server/contact-options'
+import { createMailTransport, getDefaultMailDeliveryConfig, getDefaultSupportEmail } from '@/lib/server/mail-config'
 import type { ResumeRecord } from '@/types/resume'
 
 export interface InterviewInviteDeliveryResult {
@@ -24,7 +23,7 @@ function escapeHtml(value: string) {
 function buildInterviewInviteContent(record: ResumeRecord) {
   const platformName = process.env.PLATFORM_NAME || '招聘平台'
   const schedulerUrl = process.env.INTERVIEW_SCHEDULING_URL
-  const supportEmail = process.env.RECRUITING_SUPPORT_EMAIL || process.env.SMTP_FROM || 'recruiting@example.com'
+  const supportEmail = getDefaultSupportEmail()
   const candidateName = record.contact.name || '同学'
   const subject = `${platformName}：面试邀请`
 
@@ -89,13 +88,9 @@ export async function sendInterviewInviteEmail(record: ResumeRecord): Promise<In
 
   const { subject, text, html } = buildInterviewInviteContent(record)
 
-  const host = process.env.SMTP_HOST
-  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-  const from = process.env.SMTP_FROM
+  const config = getDefaultMailDeliveryConfig()
 
-  if (!host || !from) {
+  if (!config) {
     return {
       mode: 'preview',
       subject,
@@ -105,17 +100,12 @@ export async function sendInterviewInviteEmail(record: ResumeRecord): Promise<In
     }
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: user && pass ? { user, pass } : undefined,
-  })
+  const transporter = createMailTransport(config)
 
   const info = await transporter.sendMail({
-    from,
+    from: config.from,
     to: record.contact.email,
-    replyTo: process.env.SMTP_REPLY_TO || from,
+    replyTo: config.replyTo,
     subject,
     text,
     html,

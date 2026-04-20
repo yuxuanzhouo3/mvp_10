@@ -1,5 +1,7 @@
 import { randomInt } from 'crypto'
 
+import { isCnEdition } from '@/lib/app-version'
+
 const DEFAULT_EXPIRES_IN_SECONDS = 600
 
 interface CloudBaseSendVerificationResponse {
@@ -37,7 +39,7 @@ function trimEnvValue(value: string | undefined) {
 }
 
 export function isCloudBaseAuthConfigured() {
-  return Boolean(
+  return isCnEdition() && Boolean(
     trimEnvValue(process.env.CLOUDBASE_AUTH_BASE_URL) ||
       trimEnvValue(process.env.CLOUDBASE_ENV_ID)
   )

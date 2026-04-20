@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+import { isCnEdition } from '@/lib/app-version'
+import { isAuthEmailConfigured, sendPasswordResetCodeEmail } from '@/lib/server/auth-email'
 import { createPasswordResetCode, getUserByEmail } from '@/lib/server/auth-store'
 import {
   createLocalVerificationCode,
@@ -18,6 +20,27 @@ function getCooldownMessage(message: string) {
   return match ? `Please wait ${match[1]} seconds before requesting another verification code.` : null
 }
 
+function getClientFacingError(message: string) {
+  if (message.includes('Unable to connect to SMTP server')) {
+    return '验证码邮件暂时无法发送，请检查 SMTP 主机、端口，或关闭本机代理/TUN 后重试。'
+  }
+
+  return message
+}
+
+async function sendCnResetCode(email: string) {
+  const localCode = createLocalVerificationCode()
+  const expiresInSeconds = 600
+
+  await createPasswordResetCode(email, `smtp:${crypto.randomUUID()}`, expiresInSeconds, localCode)
+  await sendPasswordResetCodeEmail(email, localCode, expiresInSeconds)
+  await recordCodeSend('reset-password', email)
+
+  return NextResponse.json({
+    message: 'Verification code sent to your email.',
+  })
+}
+
 async function sendLocalResetCode(email: string) {
   const localCode = createLocalVerificationCode()
 
@@ -25,7 +48,7 @@ async function sendLocalResetCode(email: string) {
   await recordCodeSend('reset-password', email)
 
   return NextResponse.json({
-    message: `CloudBase email delivery is unavailable right now. Use this local test code: ${localCode} (valid for 10 minutes).`,
+    message: `Email delivery is unavailable right now. Use this local test code: ${localCode} (valid for 10 minutes).`,
   })
 }
 
@@ -50,8 +73,16 @@ export async function POST(request: Request) {
 
     await assertCodeSendAllowed('reset-password', normalizedEmail)
 
+    if (isCnEdition()) {
+      if (!isAuthEmailConfigured()) {
+        throw new Error('Auth email SMTP is not configured for the CN edition.')
+      }
+
+      return await sendCnResetCode(normalizedEmail)
+    }
+
     if (!isCloudBaseAuthConfigured()) {
-      return sendLocalResetCode(normalizedEmail)
+      return await sendLocalResetCode(normalizedEmail)
     }
 
     try {
@@ -71,7 +102,7 @@ export async function POST(request: Request) {
         error instanceof Error ? error.message : error
       )
 
-      return sendLocalResetCode(normalizedEmail)
+      return await sendLocalResetCode(normalizedEmail)
     }
 
     await recordCodeSend('reset-password', normalizedEmail)
@@ -81,6 +112,7 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to send verification code.'
+    const clientFacingMessage = getClientFacingError(message)
     const cooldownMessage = getCooldownMessage(message)
     const status =
       cooldownMessage
@@ -90,7 +122,7 @@ export async function POST(request: Request) {
           : 500
 
     return NextResponse.json(
-      { error: cooldownMessage || message },
+      { error: cooldownMessage || clientFacingMessage },
       { status }
     )
   }

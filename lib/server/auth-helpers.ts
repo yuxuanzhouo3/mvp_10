@@ -9,9 +9,27 @@ const AUTH_ERROR_MESSAGES = new Set([
 
 const PERMISSION_ERROR_MESSAGE = 'User does not have permission.'
 
+function getCookieValue(cookieHeader: string, key: string) {
+  const pairs = cookieHeader.split(';')
+
+  for (const pair of pairs) {
+    const [rawKey, ...rest] = pair.trim().split('=')
+
+    if (rawKey === key) {
+      return rest.join('=')
+    }
+  }
+
+  return null
+}
+
 export async function requireAuthenticatedUser(request: Request) {
   const authorization = request.headers.get('authorization') ?? ''
-  const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : null
+  const cookieHeader = request.headers.get('cookie') ?? ''
+  const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice(7) : null
+  const cookieToken =
+    getCookieValue(cookieHeader, 'auth_token') || getCookieValue(cookieHeader, 'auth-token')
+  const token = bearerToken || cookieToken
 
   if (!token) {
     throw new Error('Authentication token is missing.')

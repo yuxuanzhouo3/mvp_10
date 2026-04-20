@@ -1,4 +1,4 @@
-export type UserRole = 'candidate' | 'recruiter' | 'admin'
+export type UserRole = 'candidate' | 'recruiter' | 'admin' | 'market'
 export type UserPlan = 'free' | 'pro' | 'enterprise'
 export type BillingStatus = 'inactive' | 'trialing' | 'active' | 'past_due'
 
@@ -13,9 +13,13 @@ export interface AppUser {
   email: string
   name: string
   avatar?: string
+  authProvider?: 'email' | 'wechat_mp'
+  wechatOpenId?: string
+  wechatUnionId?: string
   role: UserRole
   plan: UserPlan
   billingStatus: BillingStatus
+  aiPaidEnabled?: boolean
   preferences: UserPreferences
   createdAt: string
 }

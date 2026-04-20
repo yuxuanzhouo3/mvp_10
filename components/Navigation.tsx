@@ -1,9 +1,24 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { BarChart3, Briefcase, ChevronDown, FileSearch, FileText, LayoutDashboard, LogOut, Settings, Sparkles, User, Users } from 'lucide-react'
+import {
+  BarChart3,
+  Briefcase,
+  ChevronDown,
+  FileSearch,
+  FileText,
+  Globe2,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  Sparkles,
+  User,
+  Users,
+} from 'lucide-react'
 
+import { pickLanguage, roleLabel, workspaceViewLabel } from '@/lib/i18n'
 import { useAuth } from './AuthProvider'
+import { useLanguage } from './LanguageProvider'
 import type { AppUser } from '@/types/auth'
 import type { TabType } from '@/types/tabs'
 
@@ -15,29 +30,31 @@ interface NavigationProps {
 
 export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
   const { logout } = useAuth()
+  const { language, toggleLanguage } = useLanguage()
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   const navigation = useMemo(() => {
     if (user?.role === 'recruiter' || user?.role === 'admin') {
       return [
-        { name: '概览', icon: LayoutDashboard, tab: 'dashboard' as const },
-        { name: '岗位管理', icon: Briefcase, tab: 'jobs' as const },
-        { name: '候选人', icon: Users, tab: 'candidates' as const },
-        { name: 'AI 初筛', icon: FileSearch, tab: 'screening' as const },
-        { name: '设置', icon: Settings, tab: 'settings' as const },
+        { name: pickLanguage(language, '概览', 'Overview'), icon: LayoutDashboard, tab: 'dashboard' as const },
+        { name: pickLanguage(language, '岗位管理', 'Jobs'), icon: Briefcase, tab: 'jobs' as const },
+        { name: pickLanguage(language, '候选人', 'Candidates'), icon: Users, tab: 'candidates' as const },
+        { name: pickLanguage(language, 'AI 初筛', 'AI Screening'), icon: FileSearch, tab: 'screening' as const },
+        { name: pickLanguage(language, '设置', 'Settings'), icon: Settings, tab: 'settings' as const },
       ]
     }
 
     return [
-      { name: '岗位推荐', icon: Sparkles, tab: 'dashboard' as const },
-      { name: '我的简历', icon: FileText, tab: 'resume' as const },
-      { name: 'AI 面试', icon: FileSearch, tab: 'interview' as const },
-      { name: '分析', icon: BarChart3, tab: 'analytics' as const },
-      { name: '设置', icon: Settings, tab: 'settings' as const },
+      { name: pickLanguage(language, '岗位推荐', 'Jobs'), icon: Sparkles, tab: 'dashboard' as const },
+      { name: pickLanguage(language, '我的简历', 'Resume'), icon: FileText, tab: 'resume' as const },
+      { name: pickLanguage(language, 'AI 面试', 'AI Interview'), icon: FileSearch, tab: 'interview' as const },
+      { name: pickLanguage(language, '分析', 'Analytics'), icon: BarChart3, tab: 'analytics' as const },
+      { name: pickLanguage(language, '设置', 'Settings'), icon: Settings, tab: 'settings' as const },
     ]
-  }, [user?.role])
+  }, [language, user?.role])
 
-  const roleLabel = user?.role === 'recruiter' ? '招聘方' : user?.role === 'admin' ? '管理员' : '求职者'
+  const currentRoleLabel = roleLabel(user?.role, language)
+  const viewLabel = workspaceViewLabel(user?.role, language)
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-50 border-b border-slate-200 bg-white/92 shadow-sm backdrop-blur">
@@ -47,8 +64,10 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
             <Briefcase className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold text-slate-950 sm:text-base">AI 招聘工作台</h1>
-            <p className="text-xs text-slate-500">{user?.role === 'recruiter' ? '招聘方视角' : '求职者视角'}</p>
+            <h1 className="text-sm font-semibold text-slate-950 sm:text-base">
+              {pickLanguage(language, 'AI 招聘工作台', 'AI Recruiting Workspace')}
+            </h1>
+            <p className="text-xs text-slate-500">{viewLabel}</p>
           </div>
         </div>
 
@@ -60,7 +79,9 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
                 key={item.name}
                 onClick={() => onTabChange(item.tab)}
                 className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition ${
-                  activeTab === item.tab ? 'bg-primary-100 text-primary-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  activeTab === item.tab
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -71,8 +92,17 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleLanguage}
+            className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+          >
+            <Globe2 className="h-4 w-4" />
+            <span>{language === 'zh' ? 'EN' : 'ZH'}</span>
+          </button>
+
           <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 sm:block">
-            {roleLabel}
+            {currentRoleLabel}
           </div>
 
           <div className="relative">
@@ -85,7 +115,7 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
               </div>
               <div className="hidden text-left sm:block">
                 <p className="text-sm font-medium text-slate-900">{user?.name || 'User'}</p>
-                <p className="text-xs text-slate-500">{roleLabel}</p>
+                <p className="text-xs text-slate-500">{currentRoleLabel}</p>
               </div>
               <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
             </button>
@@ -96,9 +126,12 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
                   <p className="text-sm font-medium text-slate-900">{user?.name}</p>
                   <p className="mt-1 text-xs text-slate-500">{user?.email}</p>
                 </div>
-                <button onClick={logout} className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100">
+                <button
+                  onClick={logout}
+                  className="mt-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
+                >
                   <LogOut className="h-4 w-4" />
-                  <span>退出登录</span>
+                  <span>{pickLanguage(language, '退出登录', 'Log out')}</span>
                 </button>
               </div>
             )}
@@ -115,7 +148,9 @@ export function Navigation({ activeTab, onTabChange, user }: NavigationProps) {
                 key={item.name}
                 onClick={() => onTabChange(item.tab)}
                 className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
-                  activeTab === item.tab ? 'bg-primary-100 text-primary-700' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                  activeTab === item.tab
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 <Icon className="h-4 w-4" />

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+import { isCnEdition } from '@/lib/app-version'
+import { isAuthEmailConfigured, sendRegistrationCodeEmail } from '@/lib/server/auth-email'
 import { createRegistrationVerificationCode, getUserByEmail } from '@/lib/server/auth-store'
 import {
   createLocalVerificationCode,
@@ -18,6 +20,27 @@ function getCooldownMessage(message: string) {
   return match ? `Please wait ${match[1]} seconds before requesting another verification code.` : null
 }
 
+function getClientFacingError(message: string) {
+  if (message.includes('Unable to connect to SMTP server')) {
+    return '验证码邮件暂时无法发送，请检查 SMTP 主机、端口，或关闭本机代理/TUN 后重试。'
+  }
+
+  return message
+}
+
+async function sendCnRegistrationCode(email: string) {
+  const localCode = createLocalVerificationCode()
+  const expiresInSeconds = 600
+
+  await createRegistrationVerificationCode(email, `smtp:${crypto.randomUUID()}`, expiresInSeconds, localCode)
+  await sendRegistrationCodeEmail(email, localCode, expiresInSeconds)
+  await recordCodeSend('register', email)
+
+  return NextResponse.json({
+    message: 'Verification code sent to your email.',
+  })
+}
+
 async function sendLocalRegistrationCode(email: string) {
   const localCode = createLocalVerificationCode()
 
@@ -25,7 +48,7 @@ async function sendLocalRegistrationCode(email: string) {
   await recordCodeSend('register', email)
 
   return NextResponse.json({
-    message: `CloudBase email delivery is unavailable right now. Use this local test code: ${localCode} (valid for 10 minutes).`,
+    message: `Email delivery is unavailable right now. Use this local test code: ${localCode} (valid for 10 minutes).`,
   })
 }
 
@@ -51,8 +74,16 @@ export async function POST(request: Request) {
 
     await assertCodeSendAllowed('register', normalizedEmail)
 
+    if (isCnEdition()) {
+      if (!isAuthEmailConfigured()) {
+        throw new Error('Auth email SMTP is not configured for the CN edition.')
+      }
+
+      return await sendCnRegistrationCode(normalizedEmail)
+    }
+
     if (!isCloudBaseAuthConfigured()) {
-      return sendLocalRegistrationCode(normalizedEmail)
+      return await sendLocalRegistrationCode(normalizedEmail)
     }
 
     try {
@@ -72,7 +103,7 @@ export async function POST(request: Request) {
         error instanceof Error ? error.message : error
       )
 
-      return sendLocalRegistrationCode(normalizedEmail)
+      return await sendLocalRegistrationCode(normalizedEmail)
     }
 
     await recordCodeSend('register', normalizedEmail)
@@ -82,6 +113,7 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to send verification code.'
+    const clientFacingMessage = getClientFacingError(message)
     const cooldownMessage = getCooldownMessage(message)
     const status =
       cooldownMessage
@@ -94,7 +126,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: cooldownMessage || message,
+        error: cooldownMessage || clientFacingMessage,
       },
       { status }
     )

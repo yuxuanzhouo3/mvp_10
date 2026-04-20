@@ -1,5 +1,6 @@
 import path from 'path'
 
+import { getRemoteDataProvider } from '@/lib/app-version'
 import {
   ensureLocalDir,
   getLocalDataPath,
@@ -32,7 +33,10 @@ function sanitizeFileName(fileName: string) {
 }
 
 function getStoragePathPrefix() {
-  const customPrefix = process.env.CLOUDBASE_STORAGE_PATH_PREFIX?.trim().replace(/^[\\/]+|[\\/]+$/g, '')
+  const customPrefix =
+    process.env.REMOTE_STORAGE_PATH_PREFIX?.trim().replace(/^[\\/]+|[\\/]+$/g, '') ||
+    process.env.SUPABASE_STORAGE_PATH_PREFIX?.trim().replace(/^[\\/]+|[\\/]+$/g, '') ||
+    process.env.CLOUDBASE_STORAGE_PATH_PREFIX?.trim().replace(/^[\\/]+|[\\/]+$/g, '')
   return customPrefix || 'resumes'
 }
 
@@ -66,14 +70,14 @@ export async function saveResumeFile(id: string, fileName: string, buffer: Buffe
       const result = await uploadCloudFile(cloudPath, buffer)
 
       if (!result.fileID) {
-        throw new Error('CloudBase upload did not return a file ID.')
+        throw new Error('Remote storage upload did not return a file reference.')
       }
 
       return {
         storedFileName,
         storedFilePath,
         cloudFileId: result.fileID,
-        storageProvider: 'cloudbase' as const,
+        storageProvider: getRemoteDataProvider(),
       }
     },
     async () => {

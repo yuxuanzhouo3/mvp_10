@@ -3,63 +3,11 @@
 import dynamic from 'next/dynamic'
 import { ReactNode, useEffect, useState, useTransition } from 'react'
 
+import { pickLanguage } from '@/lib/i18n'
 import { useAuth } from './AuthProvider'
+import { useLanguage } from './LanguageProvider'
 import { Navigation } from './Navigation'
 import type { TabType } from '@/types/tabs'
-
-const Analytics = dynamic(() => import('./Analytics').then((module) => module.Analytics), {
-  loading: () => <DashboardPanelSkeleton label="正在加载分析数据..." />,
-})
-
-const CandidateAssessmentCenter = dynamic(
-  () => import('./CandidateAssessmentCenter').then((module) => module.CandidateAssessmentCenter),
-  {
-    loading: () => <DashboardPanelSkeleton label="正在加载 AI 面试中心..." />,
-  }
-)
-
-const CandidateJobBoard = dynamic(() => import('./CandidateJobBoard').then((module) => module.CandidateJobBoard), {
-  loading: () => <DashboardPanelSkeleton label="正在加载岗位推荐..." />,
-})
-
-const CandidateResumeCenter = dynamic(
-  () => import('./CandidateResumeCenter').then((module) => module.CandidateResumeCenter),
-  {
-    loading: () => <DashboardPanelSkeleton label="正在加载简历中心..." />,
-  }
-)
-
-const RecruiterAIScreeningPanel = dynamic(
-  () => import('./RecruiterAIScreeningPanel').then((module) => module.RecruiterAIScreeningPanel),
-  {
-    loading: () => <DashboardPanelSkeleton label="正在加载 AI 初筛..." />,
-  }
-)
-
-const RecruiterCandidateHub = dynamic(
-  () => import('./RecruiterCandidateHub').then((module) => module.RecruiterCandidateHub),
-  {
-    loading: () => <DashboardPanelSkeleton label="正在加载候选人列表..." />,
-  }
-)
-
-const RecruiterJobSetup = dynamic(
-  () => import('./RecruiterJobSetup').then((module) => module.RecruiterJobSetup),
-  {
-    loading: () => <DashboardPanelSkeleton label="正在加载岗位管理..." />,
-  }
-)
-
-const RecruiterOverview = dynamic(
-  () => import('./RecruiterOverview').then((module) => module.RecruiterOverview),
-  {
-    loading: () => <DashboardPanelSkeleton label="正在加载概览..." />,
-  }
-)
-
-const Settings = dynamic(() => import('./Settings').then((module) => module.Settings), {
-  loading: () => <DashboardPanelSkeleton label="正在加载设置..." />,
-})
 
 function DashboardPanelSkeleton({ label }: { label: string }) {
   return (
@@ -68,6 +16,105 @@ function DashboardPanelSkeleton({ label }: { label: string }) {
     </div>
   )
 }
+
+function LocalizedDashboardPanelSkeleton({
+  zhLabel,
+  enLabel,
+}: {
+  zhLabel: string
+  enLabel: string
+}) {
+  const { language } = useLanguage()
+
+  return <DashboardPanelSkeleton label={pickLanguage(language, zhLabel, enLabel)} />
+}
+
+const Analytics = dynamic(() => import('./Analytics').then((module) => module.Analytics), {
+  loading: () => (
+    <LocalizedDashboardPanelSkeleton zhLabel="正在加载分析数据..." enLabel="Loading analytics..." />
+  ),
+})
+
+const CandidateAssessmentCenter = dynamic(
+  () => import('./CandidateAssessmentCenter').then((module) => module.CandidateAssessmentCenter),
+  {
+    loading: () => (
+      <LocalizedDashboardPanelSkeleton
+        zhLabel="正在加载 AI 面试中心..."
+        enLabel="Loading AI interview center..."
+      />
+    ),
+  }
+)
+
+const CandidateJobBoard = dynamic(
+  () => import('./CandidateJobBoard').then((module) => module.CandidateJobBoard),
+  {
+    loading: () => (
+      <LocalizedDashboardPanelSkeleton
+        zhLabel="正在加载岗位推荐..."
+        enLabel="Loading job recommendations..."
+      />
+    ),
+  }
+)
+
+const CandidateResumeCenter = dynamic(
+  () => import('./CandidateResumeCenter').then((module) => module.CandidateResumeCenter),
+  {
+    loading: () => (
+      <LocalizedDashboardPanelSkeleton
+        zhLabel="正在加载简历中心..."
+        enLabel="Loading resume center..."
+      />
+    ),
+  }
+)
+
+const RecruiterAIScreeningPanel = dynamic(
+  () => import('./RecruiterAIScreeningPanel').then((module) => module.RecruiterAIScreeningPanel),
+  {
+    loading: () => (
+      <LocalizedDashboardPanelSkeleton zhLabel="正在加载 AI 初筛..." enLabel="Loading AI screening..." />
+    ),
+  }
+)
+
+const RecruiterCandidateHub = dynamic(
+  () => import('./RecruiterCandidateHub').then((module) => module.RecruiterCandidateHub),
+  {
+    loading: () => (
+      <LocalizedDashboardPanelSkeleton zhLabel="正在加载候选人列表..." enLabel="Loading candidates..." />
+    ),
+  }
+)
+
+const RecruiterJobSetup = dynamic(
+  () => import('./RecruiterJobSetup').then((module) => module.RecruiterJobSetup),
+  {
+    loading: () => (
+      <LocalizedDashboardPanelSkeleton
+        zhLabel="正在加载岗位管理..."
+        enLabel="Loading job management..."
+      />
+    ),
+  }
+)
+
+const RecruiterOverview = dynamic(
+  () => import('./RecruiterOverview').then((module) => module.RecruiterOverview),
+  {
+    loading: () => (
+      <LocalizedDashboardPanelSkeleton zhLabel="正在加载概览..." enLabel="Loading overview..." />
+    ),
+  }
+)
+
+const Settings = dynamic(() => import('./Settings').then((module) => module.Settings), {
+  loading: () => (
+    <LocalizedDashboardPanelSkeleton zhLabel="正在加载设置..." enLabel="Loading settings..." />
+  ),
+})
 
 function TabPanel({ active, children }: { active: boolean; children: ReactNode }) {
   return <div className={active ? 'block' : 'hidden'}>{children}</div>
@@ -86,6 +133,7 @@ function markTabLoaded(
 
 export function Dashboard() {
   const { user } = useAuth()
+  const { language } = useLanguage()
   const isRecruiterView = user?.role === 'recruiter' || user?.role === 'admin'
   const defaultTab: TabType = isRecruiterView ? 'jobs' : 'dashboard'
   const [activeTab, setActiveTab] = useState<TabType>(defaultTab)
@@ -116,7 +164,9 @@ export function Dashboard() {
       <main className="pt-28 lg:pt-20">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
           {isPending && (
-            <div className="mb-4 text-xs text-slate-400">页面切换中，正在准备内容...</div>
+            <div className="mb-4 text-xs text-slate-400">
+              {pickLanguage(language, '页面切换中，正在准备内容...', 'Switching views and preparing content...')}
+            </div>
           )}
 
           {isRecruiterView ? (

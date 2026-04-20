@@ -40,7 +40,7 @@ function shouldUseAiAssessmentGeneration() {
   return process.env.ENABLE_AI_ASSESSMENT_GENERATION?.trim() === '1'
 }
 
-function canUseAiAssessmentGeneration() {
+export function canUseAiAssessmentGeneration() {
   return shouldUseAiAssessmentGeneration() && Boolean(getProviderApiKey())
 }
 

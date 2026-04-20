@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react'
 import { AuthProvider } from './AuthProvider'
+import { LanguageProvider } from './LanguageProvider'
 import { WebSocketProvider } from './WebSocketProvider'
 
 interface ProvidersProps {
@@ -10,10 +11,10 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <AuthProvider>
-      <WebSocketProvider>
-        {children}
-      </WebSocketProvider>
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </AuthProvider>
+    </LanguageProvider>
   )
 } 

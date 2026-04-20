@@ -46,8 +46,31 @@ async function fetchWithToken(url: string, options: RequestInit = {}) {
 
   return fetch(url, {
     ...options,
+    credentials: 'include',
     headers,
   })
+}
+
+async function parseJsonResponse<T>(response: Response): Promise<T> {
+  const rawText = await response.text()
+
+  if (!rawText.trim()) {
+    throw new Error(
+      response.ok
+        ? 'Server returned an empty response.'
+        : `Request failed with status ${response.status}.`
+    )
+  }
+
+  try {
+    return JSON.parse(rawText) as T
+  } catch {
+    throw new Error(
+      response.ok
+        ? 'Server returned an unexpected response.'
+        : `Request failed with status ${response.status}.`
+    )
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -59,14 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refreshUser = async () => {
-    const token = getStoredAuthToken()
-
-    if (!token) {
-      setUser(null)
-      setLoading(false)
-      return
-    }
-
     try {
       const response = await fetchWithToken('/api/auth/validate', {
         method: 'GET',
@@ -76,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error('Session expired.')
       }
 
-      const userData = (await response.json()) as AppUser
+      const userData = await parseJsonResponse<AppUser>(response)
       setUser(userData)
     } catch (error) {
       console.error('Token validation failed:', error)
@@ -96,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     })
 
-    const data = (await response.json()) as { user?: AppUser; token?: string; error?: string }
+    const data = await parseJsonResponse<{ user?: AppUser; token?: string; error?: string }>(response)
 
     if (!response.ok || !data.user || !data.token) {
       throw new Error(data.error || 'Login failed.')
@@ -134,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(userData),
     })
 
-    const data = (await response.json()) as { user?: AppUser; token?: string; error?: string }
+    const data = await parseJsonResponse<{ user?: AppUser; token?: string; error?: string }>(response)
 
     if (!response.ok || !data.user || !data.token) {
       throw new Error(data.error || 'Registration failed.')
@@ -153,7 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email }),
     })
 
-    const data = (await response.json()) as { message?: string; error?: string }
+    const data = await parseJsonResponse<{ message?: string; error?: string }>(response)
 
     if (!response.ok) {
       throw new Error(data.error || 'Failed to send verification code.')
@@ -171,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email }),
     })
 
-    const data = (await response.json()) as { message?: string; error?: string }
+    const data = await parseJsonResponse<{ message?: string; error?: string }>(response)
 
     if (!response.ok) {
       throw new Error(data.error || 'Failed to send verification code.')
@@ -193,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     })
 
-    const data = (await response.json()) as { message?: string; error?: string }
+    const data = await parseJsonResponse<{ message?: string; error?: string }>(response)
 
     if (!response.ok) {
       throw new Error(data.error || 'Failed to reset password.')

@@ -6,10 +6,12 @@ import {
   buildDefaultTimeline,
   buildDefaultWorkflow,
 } from '@/lib/server/resume-defaults'
-import { analyzeResumeText, extractResumeText } from '@/lib/server/resume-analysis'
+import { assertAiAccess, getAiAccessErrorStatus, isAiAccessErrorMessage, recordAiUsage } from '@/lib/server/ai-access'
+import { analyzeResumeText, canUseAiResumeAnalysis, extractResumeText } from '@/lib/server/resume-analysis'
 import { addResumeRecord, listResumeRecords, saveResumeFile, toResumeListItem } from '@/lib/server/resume-store'
 import { isAuthErrorMessage, requireAuthenticatedUser } from '@/lib/server/auth-helpers'
 import type { AppUser } from '@/types/auth'
+import type { AiAccessMode } from '@/types/ai'
 import type { ResumeRecord } from '@/types/resume'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -80,6 +82,13 @@ export async function POST(request: Request) {
       )
     }
 
+    let aiAccessMode: AiAccessMode | null = null
+
+    if (canUseAiResumeAnalysis()) {
+      const aiAccess = await assertAiAccess(user)
+      aiAccessMode = aiAccess.accessMode
+    }
+
     const analysis = await analyzeResumeText(extractedText)
     const workflow = buildDefaultWorkflow({
       contact: analysis.contact,
@@ -118,10 +127,19 @@ export async function POST(request: Request) {
     }
 
     await addResumeRecord(record)
+
+    if (analysis.source === 'openai' && aiAccessMode) {
+      await recordAiUsage(user, 'resume_analysis', aiAccessMode)
+    }
+
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Resume upload failed.'
-    const status = isAuthErrorMessage(message) ? 401 : 500
+    const status = isAuthErrorMessage(message)
+      ? 401
+      : isAiAccessErrorMessage(message)
+        ? getAiAccessErrorStatus(message)
+        : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

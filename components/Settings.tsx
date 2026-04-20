@@ -13,6 +13,7 @@ import {
   User,
 } from 'lucide-react'
 
+import { isWechatPayEnabled } from '@/lib/app-version'
 import { getStoredAuthToken, useAuth } from './AuthProvider'
 import { WechatPaymentDialog } from './WechatPaymentDialog'
 import type { PaymentMethod, PaymentPlan } from '@/types/billing'
@@ -26,6 +27,7 @@ const SETTINGS_NAV_ITEMS = [
 ] as const
 
 export function Settings() {
+  const wechatPayEnabled = isWechatPayEnabled()
   const { user, refreshUser } = useAuth()
   const [activeTab, setActiveTab] = useState('profile')
   const [isEditing, setIsEditing] = useState(false)
@@ -138,7 +140,7 @@ export function Settings() {
   async function handleWechatPaid() {
     await refreshUser()
     setActiveWechatCheckout(null)
-    setBillingMessage('微信支付成功，当前账号已升级为 Pro。')
+    setBillingMessage('WeChat Pay succeeded. Your account has been upgraded to Pro.')
   }
 
   async function startUpgrade(planId: PaymentPlan['id'], paymentMethod: PaymentMethod = 'default') {
@@ -147,6 +149,11 @@ export function Settings() {
 
     if (!token) {
       setBillingMessage('Please sign in again before starting checkout.')
+      return
+    }
+
+    if (paymentMethod === 'wechat' && !wechatPayEnabled) {
+      setBillingMessage('WeChat Pay is only available in the CN edition.')
       return
     }
 
@@ -193,8 +200,8 @@ export function Settings() {
         })
         setBillingMessage(
           checkout.isMock
-            ? '微信支付弹层已打开，当前是本地模拟模式。'
-            : '微信支付二维码已生成，请扫码完成支付。'
+            ? 'The WeChat Pay modal is open in local mock mode.'
+            : 'The WeChat Pay QR code is ready. Scan it to complete payment.'
         )
         return
       }
@@ -377,24 +384,26 @@ export function Settings() {
                           <p className="mt-2 text-3xl font-bold text-primary-700">
                             {priceFormatter.format(plan.amount)}
                           </p>
-                          <p className="text-sm text-gray-500 mt-1">每 {plan.interval}</p>
+                          <p className="text-sm text-gray-500 mt-1">per {plan.interval}</p>
                           <p className="text-sm text-gray-600 mt-4">{plan.description}</p>
                           <div className="mt-6 space-y-3">
-                            <button
+                            {wechatPayEnabled ? (
+                              <button
                               onClick={() => void startUpgrade(plan.id, 'wechat')}
                               disabled={isAnyBillingLoading}
                               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#07c160] px-4 py-3 text-sm font-medium text-white transition hover:bg-[#06ad56] disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               {isWechatLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                              <span>{isWechatLoading ? '处理中...' : '微信支付'}</span>
-                            </button>
+                              <span>{isWechatLoading ? 'Processing...' : 'WeChat Pay'}</span>
+                              </button>
+                            ) : null}
                             <button
                               onClick={() => void startUpgrade(plan.id, 'default')}
                               disabled={isAnyBillingLoading}
                               className="btn-secondary w-full flex items-center justify-center space-x-2"
                             >
                               {isDefaultLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                              <span>{isDefaultLoading ? '处理中...' : '原有流程'}</span>
+                              <span>{isDefaultLoading ? 'Processing...' : 'Default Checkout'}</span>
                             </button>
                           </div>
                         </>

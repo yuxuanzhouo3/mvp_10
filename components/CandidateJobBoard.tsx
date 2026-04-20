@@ -3,35 +3,23 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, Briefcase, ChevronDown, Loader2, MapPin, Sparkles } from 'lucide-react'
 
+import {
+  applicationStageLabel,
+  formatCurrencyRange,
+  jobLocationModeLabel,
+  pickLanguage,
+  postedLabel,
+} from '@/lib/i18n'
 import { getStoredAuthToken } from './AuthProvider'
+import { useLanguage } from './LanguageProvider'
 import { TechnicalTag } from './TechnicalText'
 import type { ApplicationRecord, ApplicationStage } from '@/types/application'
-import type { JobRecommendationResponse, JobRecord } from '@/types/job'
+import type { JobRecommendationResponse } from '@/types/job'
 
 type SortMode = 'match' | 'latest' | 'salary'
 
+const ALL_LOCATIONS = '__all_locations__'
 const ACTIVE_STAGES: ApplicationStage[] = ['applied', 'screening', 'interview', 'offer', 'hired']
-
-function stageLabel(stage: ApplicationStage) {
-  switch (stage) {
-    case 'applied':
-      return '已投递'
-    case 'screening':
-      return '初筛中'
-    case 'interview':
-      return '面试中'
-    case 'offer':
-      return 'Offer 阶段'
-    case 'hired':
-      return '已录用'
-    case 'rejected':
-      return '未通过'
-    case 'withdrawn':
-      return '已撤回'
-    default:
-      return stage
-  }
-}
 
 function stageTone(stage: ApplicationStage) {
   switch (stage) {
@@ -59,33 +47,6 @@ function scoreTone(score: number) {
   return 'bg-slate-100 text-slate-700'
 }
 
-function locationModeLabel(mode: JobRecord['locationMode']) {
-  switch (mode) {
-    case 'remote':
-      return '远程'
-    case 'hybrid':
-      return '混合'
-    case 'onsite':
-    default:
-      return '现场'
-  }
-}
-
-function salaryLabel(job: JobRecord) {
-  const formatter = new Intl.NumberFormat('zh-CN', {
-    style: 'currency',
-    currency: job.currency,
-    maximumFractionDigits: 0,
-  })
-
-  return `${formatter.format(job.salaryMin)} - ${formatter.format(job.salaryMax)}`
-}
-
-function postedLabel(postedAt: string) {
-  const days = Math.max(0, Math.floor((Date.now() - new Date(postedAt).getTime()) / (1000 * 60 * 60 * 24)))
-  return days === 0 ? '今天发布' : `${days} 天前发布`
-}
-
 function isActiveApplication(stage: ApplicationStage) {
   return ACTIVE_STAGES.includes(stage)
 }
@@ -98,14 +59,16 @@ function upsertApplication(records: ApplicationRecord[], next: ApplicationRecord
 
   const updated = [...records]
   updated[index] = next
-  return updated.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+  return updated.sort(
+    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+  )
 }
 
 function getAuthorizedHeaders(includeJson = false) {
   const token = getStoredAuthToken()
 
   if (!token) {
-    throw new Error('请先重新登录。')
+    throw new Error('Please sign in again.')
   }
 
   return {
@@ -115,18 +78,86 @@ function getAuthorizedHeaders(includeJson = false) {
 }
 
 export function CandidateJobBoard() {
+  const { language } = useLanguage()
   const [data, setData] = useState<JobRecommendationResponse | null>(null)
   const [applications, setApplications] = useState<ApplicationRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [actingJobId, setActingJobId] = useState<string | null>(null)
   const [keyword, setKeyword] = useState('')
-  const [locationFilter, setLocationFilter] = useState('全部地点')
+  const [locationFilter, setLocationFilter] = useState(ALL_LOCATIONS)
   const [minSalaryFilter, setMinSalaryFilter] = useState('')
   const [maxSalaryFilter, setMaxSalaryFilter] = useState('')
   const [minMatch, setMinMatch] = useState('0')
   const [sortMode, setSortMode] = useState<SortMode>('match')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+
+  const copy = {
+    title: pickLanguage(language, '岗位推荐', 'Job Recommendations'),
+    heading: pickLanguage(
+      language,
+      '先按地点和薪资范围筛一轮，再挑高匹配岗位投递。',
+      'Filter by location and salary first, then apply to the roles with the best match.'
+    ),
+    description: pickLanguage(
+      language,
+      '重要信息直接展示，匹配解释、缺口技能和投递建议放进展开区，页面会更干净。',
+      'Key information stays visible while match rationale, skill gaps, and application advice live inside the expanded section.'
+    ),
+    refresh: pickLanguage(language, '刷新岗位', 'Refresh Jobs'),
+    totalMatches: pickLanguage(language, '当前可选岗位', 'Available Roles'),
+    activeApplications: pickLanguage(language, '进行中的投递', 'Active Applications'),
+    topSkillGap: pickLanguage(language, '优先补齐技能', 'Top Skill Gap'),
+    bestFocus: pickLanguage(language, '当前重点建议', 'Current Focus'),
+    filters: pickLanguage(language, '筛选与排序', 'Filters & Sorting'),
+    searchPlaceholder: pickLanguage(language, '搜索岗位、公司、技能', 'Search roles, companies, or skills'),
+    minSalary: pickLanguage(language, '最低薪资', 'Min Salary'),
+    maxSalary: pickLanguage(language, '最高薪资', 'Max Salary'),
+    allLocations: pickLanguage(language, '全部地点', 'All Locations'),
+    allMatches: pickLanguage(language, '全部匹配度', 'All Match Scores'),
+    filterHint: pickLanguage(
+      language,
+      '薪资范围按岗位薪资上下限与筛选条件是否重叠来计算。地点和薪资都可以组合使用。',
+      'Salary filtering checks overlap between your range and each job range. Location and salary filters can be combined.'
+    ),
+    sortByMatch: pickLanguage(language, '按匹配度排序', 'Sort by Match'),
+    sortByLatest: pickLanguage(language, '按发布时间排序', 'Sort by Newest'),
+    sortBySalary: pickLanguage(language, '按最高薪资排序', 'Sort by Highest Salary'),
+    noResults: pickLanguage(
+      language,
+      '当前没有符合条件的岗位，试试放宽地点、薪资或匹配度筛选。',
+      'No roles match your filters right now. Try widening location, salary, or match score.'
+    ),
+    matchScore: pickLanguage(language, '分匹配', 'match'),
+    processing: pickLanguage(language, '处理中...', 'Working...'),
+    hired: pickLanguage(language, '已录用', 'Hired'),
+    withdraw: pickLanguage(language, '撤回投递', 'Withdraw'),
+    apply: pickLanguage(language, '投递岗位', 'Apply'),
+    applied: pickLanguage(language, '已投递', 'Applied'),
+    details: pickLanguage(language, '展开匹配详情', 'Expand Match Details'),
+    whyRecommended: pickLanguage(language, '为什么推荐给你', 'Why This Role'),
+    noReason: pickLanguage(language, '系统暂未生成更多解释。', 'The system has not generated more rationale yet.'),
+    advice: pickLanguage(language, '投递建议', 'Application Advice'),
+    matchedSkills: pickLanguage(language, '命中技能', 'Matched Skills'),
+    noMatchedSkills: pickLanguage(language, '暂未命中明显技能。', 'No clearly matched skills yet.'),
+    missingSkills: pickLanguage(language, '建议补齐技能', 'Suggested Skills to Add'),
+    skills: pickLanguage(language, '技能匹配', 'Skills'),
+    experience: pickLanguage(language, '经验匹配', 'Experience'),
+    location: pickLanguage(language, '地点匹配', 'Location'),
+    growth: pickLanguage(language, '成长空间', 'Growth'),
+    compensation: pickLanguage(language, '薪资匹配', 'Compensation'),
+    loading: pickLanguage(language, '正在加载岗位推荐...', 'Loading job recommendations...'),
+    noGap: pickLanguage(language, '暂无', 'None yet'),
+    bestFocusFallback: pickLanguage(
+      language,
+      '继续更新简历，系统会给你更准确的推荐。',
+      'Keep refining your resume and the system will generate more accurate recommendations.'
+    ),
+    loadFailed: pickLanguage(language, '岗位推荐加载失败。', 'Failed to load job recommendations.'),
+    applicationsFailed: pickLanguage(language, '投递记录加载失败。', 'Failed to load applications.'),
+    applyFailed: pickLanguage(language, '投递失败。', 'Failed to apply.'),
+    withdrawFailed: pickLanguage(language, '撤回失败。', 'Failed to withdraw the application.'),
+  }
 
   useEffect(() => {
     void loadData()
@@ -148,14 +179,18 @@ export function CandidateJobBoard() {
         }),
       ])
 
-      const recommendationPayload = (await recommendationResponse.json()) as JobRecommendationResponse | { error?: string }
-      const applicationPayload = (await applicationResponse.json()) as ApplicationRecord[] | { error?: string }
+      const recommendationPayload = (await recommendationResponse.json()) as
+        | JobRecommendationResponse
+        | { error?: string }
+      const applicationPayload = (await applicationResponse.json()) as
+        | ApplicationRecord[]
+        | { error?: string }
 
       if (!recommendationResponse.ok || !('recommendations' in recommendationPayload)) {
         throw new Error(
           'error' in recommendationPayload && recommendationPayload.error
             ? recommendationPayload.error
-            : '岗位推荐加载失败。'
+            : copy.loadFailed
         )
       }
 
@@ -163,14 +198,14 @@ export function CandidateJobBoard() {
         throw new Error(
           !Array.isArray(applicationPayload) && applicationPayload.error
             ? applicationPayload.error
-            : '投递记录加载失败。'
+            : copy.applicationsFailed
         )
       }
 
       setData(recommendationPayload)
       setApplications(applicationPayload)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '岗位推荐加载失败。')
+      setError(loadError instanceof Error ? loadError.message : copy.loadFailed)
     } finally {
       setLoading(false)
     }
@@ -192,9 +227,12 @@ export function CandidateJobBoard() {
   }, [applications])
 
   const locationOptions = useMemo(() => {
-    const options = Array.from(new Set((data?.recommendations ?? []).map((item) => item.job.location))).sort()
-    return ['全部地点', ...options]
-  }, [data?.recommendations])
+    const options = Array.from(
+      new Set((data?.recommendations ?? []).map((item) => item.job.location))
+    ).sort()
+
+    return [{ value: ALL_LOCATIONS, label: copy.allLocations }, ...options.map((value) => ({ value, label: value }))]
+  }, [copy.allLocations, data?.recommendations])
 
   const filteredRecommendations = useMemo(() => {
     const source = data?.recommendations ?? []
@@ -217,7 +255,8 @@ export function CandidateJobBoard() {
           .toLowerCase()
 
         const matchSearch = !search || haystack.includes(search)
-        const matchLocation = locationFilter === '全部地点' || item.job.location === locationFilter
+        const matchLocation =
+          locationFilter === ALL_LOCATIONS || item.job.location === locationFilter
         const matchSalaryMin = minSalary === null || item.job.salaryMax >= minSalary
         const matchSalaryMax = maxSalary === null || item.job.salaryMin <= maxSalary
 
@@ -242,10 +281,16 @@ export function CandidateJobBoard() {
     return {
       totalMatches: filteredRecommendations.length,
       activeApplications,
-      topSkillGap: data?.summary.topSkillGap ?? '暂无',
-      bestFocus: data?.summary.bestFocus ?? '继续更新简历，系统会给你更准确的推荐。',
+      topSkillGap: data?.summary.topSkillGap ?? copy.noGap,
+      bestFocus: data?.summary.bestFocus ?? copy.bestFocusFallback,
     }
-  }, [applications, data, filteredRecommendations.length])
+  }, [
+    applications,
+    copy.bestFocusFallback,
+    copy.noGap,
+    data,
+    filteredRecommendations.length,
+  ])
 
   async function applyToJob(jobId: string, matchScore: number) {
     try {
@@ -261,13 +306,15 @@ export function CandidateJobBoard() {
 
       const payload = (await response.json()) as ApplicationRecord | { error?: string }
       if (!response.ok || !('id' in payload)) {
-        throw new Error('error' in payload && payload.error ? payload.error : '投递失败。')
+        throw new Error('error' in payload && payload.error ? payload.error : copy.applyFailed)
       }
 
       setApplications((current) => upsertApplication(current, payload))
-      setMessage(`已投递 ${payload.jobTitle}。`)
+      setMessage(
+        pickLanguage(language, `已投递 ${payload.jobTitle}。`, `Applied to ${payload.jobTitle}.`)
+      )
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '投递失败。')
+      setError(submitError instanceof Error ? submitError.message : copy.applyFailed)
     } finally {
       setActingJobId(null)
     }
@@ -287,13 +334,15 @@ export function CandidateJobBoard() {
 
       const payload = (await response.json()) as ApplicationRecord | { error?: string }
       if (!response.ok || !('id' in payload)) {
-        throw new Error('error' in payload && payload.error ? payload.error : '撤回失败。')
+        throw new Error('error' in payload && payload.error ? payload.error : copy.withdrawFailed)
       }
 
       setApplications((current) => upsertApplication(current, payload))
-      setMessage(`已撤回 ${payload.jobTitle}。`)
+      setMessage(
+        pickLanguage(language, `已撤回 ${payload.jobTitle}。`, `Withdrew ${payload.jobTitle}.`)
+      )
     } catch (withdrawError) {
-      setError(withdrawError instanceof Error ? withdrawError.message : '撤回失败。')
+      setError(withdrawError instanceof Error ? withdrawError.message : copy.withdrawFailed)
     } finally {
       setActingJobId(null)
     }
@@ -303,7 +352,7 @@ export function CandidateJobBoard() {
     return (
       <div className="card flex items-center justify-center py-16">
         <Loader2 className="mr-3 h-5 w-5 animate-spin text-slate-400" />
-        <span className="text-sm text-slate-500">正在加载岗位推荐...</span>
+        <span className="text-sm text-slate-500">{copy.loading}</span>
       </div>
     )
   }
@@ -314,33 +363,31 @@ export function CandidateJobBoard() {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-700">
             <Sparkles className="h-4 w-4" />
-            <span>岗位推荐</span>
+            <span>{copy.title}</span>
           </div>
-          <h2 className="mt-4 text-3xl font-semibold text-slate-900">先按地点和薪资范围筛一轮，再挑高匹配岗位投递。</h2>
-          <p className="mt-2 text-sm leading-7 text-slate-600">
-            重要信息直接展示，匹配解释、缺口技能和投递建议放进展开区，页面会更干净。
-          </p>
+          <h2 className="mt-4 text-3xl font-semibold text-slate-900">{copy.heading}</h2>
+          <p className="mt-2 text-sm leading-7 text-slate-600">{copy.description}</p>
         </div>
         <button onClick={() => void loadData()} className="btn-secondary">
-          刷新岗位
+          {copy.refresh}
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="card">
-          <p className="text-sm text-slate-500">当前可选岗位</p>
+          <p className="text-sm text-slate-500">{copy.totalMatches}</p>
           <p className="mt-2 text-3xl font-semibold text-slate-900">{stats.totalMatches}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">进行中的投递</p>
+          <p className="text-sm text-slate-500">{copy.activeApplications}</p>
           <p className="mt-2 text-3xl font-semibold text-emerald-700">{stats.activeApplications}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">优先补齐技能</p>
+          <p className="text-sm text-slate-500">{copy.topSkillGap}</p>
           <p className="mt-2 text-lg font-semibold text-slate-900">{stats.topSkillGap}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">当前重点建议</p>
+          <p className="text-sm text-slate-500">{copy.bestFocus}</p>
           <p className="mt-2 text-sm font-medium leading-7 text-slate-900">{stats.bestFocus}</p>
         </div>
       </div>
@@ -362,7 +409,7 @@ export function CandidateJobBoard() {
 
       <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" open>
         <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-900">
-          筛选与排序
+          {copy.filters}
           <ChevronDown className="h-4 w-4 text-slate-400" />
         </summary>
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
@@ -370,12 +417,12 @@ export function CandidateJobBoard() {
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             className="input-field xl:col-span-2"
-            placeholder="搜索岗位、公司、技能"
+            placeholder={copy.searchPlaceholder}
           />
           <select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)} className="input-field">
             {locationOptions.map((location) => (
-              <option key={location} value={location}>
-                {location}
+              <option key={location.value} value={location.value}>
+                {location.label}
               </option>
             ))}
           </select>
@@ -383,29 +430,27 @@ export function CandidateJobBoard() {
             value={minSalaryFilter}
             onChange={(event) => setMinSalaryFilter(event.target.value)}
             className="input-field"
-            placeholder="最低薪资"
+            placeholder={copy.minSalary}
           />
           <input
             value={maxSalaryFilter}
             onChange={(event) => setMaxSalaryFilter(event.target.value)}
             className="input-field"
-            placeholder="最高薪资"
+            placeholder={copy.maxSalary}
           />
           <select value={minMatch} onChange={(event) => setMinMatch(event.target.value)} className="input-field">
-            <option value="0">全部匹配度</option>
-            <option value="70">70 分以上</option>
-            <option value="80">80 分以上</option>
-            <option value="90">90 分以上</option>
+            <option value="0">{copy.allMatches}</option>
+            <option value="70">70+</option>
+            <option value="80">80+</option>
+            <option value="90">90+</option>
           </select>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
-          <p className="text-xs leading-6 text-slate-500">
-            薪资范围按岗位薪资上下限与筛选条件是否重叠来计算。地点和薪资都可以组合使用。
-          </p>
+          <p className="text-xs leading-6 text-slate-500">{copy.filterHint}</p>
           <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)} className="input-field">
-            <option value="match">按匹配度排序</option>
-            <option value="latest">按发布时间排序</option>
-            <option value="salary">按最高薪资排序</option>
+            <option value="match">{copy.sortByMatch}</option>
+            <option value="latest">{copy.sortByLatest}</option>
+            <option value="salary">{copy.sortBySalary}</option>
           </select>
         </div>
       </details>
@@ -413,14 +458,15 @@ export function CandidateJobBoard() {
       <div className="space-y-4">
         {filteredRecommendations.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-12 text-center text-sm text-slate-500">
-            当前没有符合条件的岗位，试试放宽地点、薪资或匹配度筛选。
+            {copy.noResults}
           </div>
         )}
 
         {filteredRecommendations.map((item) => {
           const application = applicationByJobId.get(item.job.id)
           const active = application ? isActiveApplication(application.stage) : false
-          const canApply = !application || application.stage === 'withdrawn' || application.stage === 'rejected'
+          const canApply =
+            !application || application.stage === 'withdrawn' || application.stage === 'rejected'
 
           return (
             <div key={item.job.id} className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -429,11 +475,13 @@ export function CandidateJobBoard() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-xl font-semibold text-slate-900">{item.job.title}</h3>
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${scoreTone(item.matchScore)}`}>
-                      {item.matchScore} 分匹配
+                      {language === 'en'
+                        ? `${item.matchScore}% ${copy.matchScore}`
+                        : `${item.matchScore} ${copy.matchScore}`}
                     </span>
                     {application && (
                       <span className={`rounded-full px-3 py-1 text-xs font-medium ${stageTone(application.stage)}`}>
-                        {stageLabel(application.stage)}
+                        {applicationStageLabel(application.stage, language)}
                       </span>
                     )}
                   </div>
@@ -446,9 +494,9 @@ export function CandidateJobBoard() {
                       <MapPin className="h-4 w-4" />
                       {item.job.location}
                     </span>
-                    <span>{locationModeLabel(item.job.locationMode)}</span>
-                    <span>{salaryLabel(item.job)}</span>
-                    <span>{postedLabel(item.job.postedAt)}</span>
+                    <span>{jobLocationModeLabel(item.job.locationMode, language)}</span>
+                    <span>{formatCurrencyRange(item.job, language)}</span>
+                    <span>{postedLabel(item.job.postedAt, language)}</span>
                   </div>
                   <p className="mt-3 text-sm leading-7 text-slate-600">{item.job.description}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -478,36 +526,38 @@ export function CandidateJobBoard() {
                     className={active ? 'btn-secondary' : 'btn-primary'}
                   >
                     {actingJobId === item.job.id
-                      ? '处理中...'
+                      ? copy.processing
                       : application?.stage === 'hired'
-                        ? '已录用'
+                        ? copy.hired
                         : active
-                          ? '撤回投递'
+                          ? copy.withdraw
                           : canApply
-                            ? '投递岗位'
-                            : '已投递'}
+                            ? copy.apply
+                            : copy.applied}
                   </button>
                 </div>
               </div>
 
               <details className="mt-4 rounded-2xl bg-slate-50 p-4">
                 <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-900">
-                  展开匹配详情
+                  {copy.details}
                   <ChevronDown className="h-4 w-4 text-slate-400" />
                 </summary>
                 <div className="mt-4 space-y-4 text-sm text-slate-600">
                   <div>
-                    <p className="font-medium text-slate-900">为什么推荐给你</p>
-                    <p className="mt-1">{item.reasons.join('；') || '系统暂未生成更多解释。'}</p>
+                    <p className="font-medium text-slate-900">{copy.whyRecommended}</p>
+                    <p className="mt-1">
+                      {item.reasons.join(language === 'en' ? '; ' : '；') || copy.noReason}
+                    </p>
                   </div>
 
                   <div>
-                    <p className="font-medium text-slate-900">投递建议</p>
+                    <p className="font-medium text-slate-900">{copy.advice}</p>
                     <p className="mt-1">{item.personalizedAdvice}</p>
                   </div>
 
                   <div>
-                    <p className="font-medium text-slate-900">命中技能</p>
+                    <p className="font-medium text-slate-900">{copy.matchedSkills}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {item.matchedSkills.length > 0 ? (
                         item.matchedSkills.map((skill) => (
@@ -518,14 +568,14 @@ export function CandidateJobBoard() {
                           />
                         ))
                       ) : (
-                        <span>暂未命中明显技能。</span>
+                        <span>{copy.noMatchedSkills}</span>
                       )}
                     </div>
                   </div>
 
                   {item.missingSkills.length > 0 && (
                     <div>
-                      <p className="font-medium text-slate-900">建议补齐技能</p>
+                      <p className="font-medium text-slate-900">{copy.missingSkills}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {item.missingSkills.map((skill) => (
                           <TechnicalTag
@@ -540,23 +590,23 @@ export function CandidateJobBoard() {
 
                   <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                     <div className="rounded-xl bg-white p-3">
-                      <p className="text-xs text-slate-500">技能匹配</p>
+                      <p className="text-xs text-slate-500">{copy.skills}</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{item.breakdown.skills}</p>
                     </div>
                     <div className="rounded-xl bg-white p-3">
-                      <p className="text-xs text-slate-500">经验匹配</p>
+                      <p className="text-xs text-slate-500">{copy.experience}</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{item.breakdown.experience}</p>
                     </div>
                     <div className="rounded-xl bg-white p-3">
-                      <p className="text-xs text-slate-500">地点匹配</p>
+                      <p className="text-xs text-slate-500">{copy.location}</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{item.breakdown.location}</p>
                     </div>
                     <div className="rounded-xl bg-white p-3">
-                      <p className="text-xs text-slate-500">成长空间</p>
+                      <p className="text-xs text-slate-500">{copy.growth}</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{item.breakdown.growth}</p>
                     </div>
                     <div className="rounded-xl bg-white p-3">
-                      <p className="text-xs text-slate-500">薪资匹配</p>
+                      <p className="text-xs text-slate-500">{copy.compensation}</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{item.breakdown.compensation}</p>
                     </div>
                   </div>

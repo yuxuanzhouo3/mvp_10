@@ -1,6 +1,8 @@
 node_modules
 .next
 .vercel
+.vscode
+_external
 data
 .env.local
 *.log
@@ -9,3 +11,6 @@ data
 *.pid
 *.tsbuildinfo
 .DS_Store
+lucen-doc-api.json
+lucen-doc.html
+scripts/seed-backoffice-users.js

@@ -148,6 +148,10 @@ function shouldUseAiResumeAnalysis() {
   return process.env.ENABLE_AI_RESUME_ANALYSIS?.trim() === '1'
 }
 
+export function canUseAiResumeAnalysis() {
+  return shouldUseAiResumeAnalysis() && Boolean(getProviderApiKey())
+}
+
 function trimEnvValue(value: string | undefined) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null

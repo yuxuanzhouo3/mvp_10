@@ -1,38 +1,39 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowRight, ChevronDown, Loader2, PlayCircle, Save, Send, Sparkles } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowRight,
+  ChevronDown,
+  Loader2,
+  PlayCircle,
+  Save,
+  Send,
+  Sparkles,
+} from 'lucide-react'
 
+import {
+  assessmentKindLabel,
+  assessmentRecommendationLabel,
+  assessmentStatusLabel,
+  pickLanguage,
+} from '@/lib/i18n'
 import { getStoredAuthToken } from './AuthProvider'
+import { useLanguage } from './LanguageProvider'
 import type { ApplicationRecord } from '@/types/application'
-import type { AssessmentRecord, AssessmentRecommendation } from '@/types/assessment'
+import type { AssessmentRecord } from '@/types/assessment'
 import type { ResumeListItem } from '@/types/resume'
 
 function getAuthorizedHeaders(includeJson = false) {
   const token = getStoredAuthToken()
 
   if (!token) {
-    throw new Error('请先重新登录。')
+    throw new Error('Please sign in again.')
   }
 
   return {
     ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
     Authorization: `Bearer ${token}`,
-  }
-}
-
-function statusLabel(status: AssessmentRecord['status']) {
-  switch (status) {
-    case 'draft':
-      return '待作答'
-    case 'in_progress':
-      return '作答中'
-    case 'submitted':
-      return '已提交'
-    case 'scored':
-      return '已评分'
-    default:
-      return status
   }
 }
 
@@ -50,22 +51,7 @@ function statusTone(status: AssessmentRecord['status']) {
   }
 }
 
-function recommendationLabel(value: AssessmentRecommendation | null) {
-  switch (value) {
-    case 'strong_yes':
-      return '强烈推荐'
-    case 'yes':
-      return '推荐'
-    case 'hold':
-      return '待定'
-    case 'no':
-      return '不推荐'
-    default:
-      return '待评估'
-  }
-}
-
-function recommendationTone(value: AssessmentRecommendation | null) {
+function recommendationTone(value: AssessmentRecord['summary']['recommendation']) {
   switch (value) {
     case 'strong_yes':
       return 'bg-emerald-100 text-emerald-700'
@@ -80,14 +66,6 @@ function recommendationTone(value: AssessmentRecommendation | null) {
   }
 }
 
-function kindLabel(kind: AssessmentRecord['kind']) {
-  return kind === 'practice' ? '岗位自测' : '招聘方发题'
-}
-
-function kindTone(kind: AssessmentRecord['kind']) {
-  return kind === 'practice' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700'
-}
-
 function syncRecord(records: AssessmentRecord[], next: AssessmentRecord) {
   const index = records.findIndex((item) => item.id === next.id)
   if (index === -1) {
@@ -96,10 +74,13 @@ function syncRecord(records: AssessmentRecord[], next: AssessmentRecord) {
 
   const updated = [...records]
   updated[index] = next
-  return updated.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+  return updated.sort(
+    (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
+  )
 }
 
 export function CandidateAssessmentCenter() {
+  const { language } = useLanguage()
   const [records, setRecords] = useState<AssessmentRecord[]>([])
   const [applications, setApplications] = useState<ApplicationRecord[]>([])
   const [resumes, setResumes] = useState<ResumeListItem[]>([])
@@ -113,6 +94,101 @@ export function CandidateAssessmentCenter() {
   const [practiceResumeId, setPracticeResumeId] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+
+  const copy = {
+    loadFailed: pickLanguage(language, 'AI 面试中心加载失败。', 'Failed to load the AI interview center.'),
+    assessmentsFailed: pickLanguage(language, '测评列表加载失败。', 'Failed to load assessments.'),
+    applicationsFailed: pickLanguage(language, '投递岗位加载失败。', 'Failed to load applications.'),
+    resumesFailed: pickLanguage(language, '简历列表加载失败。', 'Failed to load resumes.'),
+    selectJob: pickLanguage(language, '请先选择一个已投递岗位。', 'Select an applied role first.'),
+    createPracticeFailed: pickLanguage(language, '岗位自测创建失败。', 'Failed to create the practice interview.'),
+    createPracticeSuccess: pickLanguage(
+      language,
+      '岗位自测题目已生成，你可以直接开始模拟作答。',
+      'Practice interview questions are ready. You can start answering now.'
+    ),
+    saveDraftFailed: pickLanguage(language, '草稿保存失败。', 'Failed to save the draft.'),
+    saveDraftSuccess: pickLanguage(language, '草稿已保存。', 'Draft saved.'),
+    submitFailed: pickLanguage(language, '提交失败。', 'Failed to submit.'),
+    submitPracticeSuccess: pickLanguage(
+      language,
+      '自测已完成评分，你可以在分析页对比自测和招聘方题目的结果。',
+      'Practice scoring is complete. You can compare it with recruiter-assigned assessments in Analytics.'
+    ),
+    submitAssignedSuccess: pickLanguage(
+      language,
+      '已提交，系统已自动复评并同步结果给招聘方。',
+      'Submitted. The system will finish scoring and sync the result back to the recruiter.'
+    ),
+    loading: pickLanguage(language, '正在加载 AI 面试中心...', 'Loading the AI interview center...'),
+    title: pickLanguage(language, 'AI 面试中心', 'AI Interview Center'),
+    heading: pickLanguage(
+      language,
+      '已投岗位可以先做自测，招聘方发来的题目也会在这里集中处理。',
+      'Practice for applied roles here, and complete recruiter-assigned interviews in the same place.'
+    ),
+    description: pickLanguage(
+      language,
+      '题目切换改成横向排布，方便连续作答。提交后系统会自动评分，招聘方发来的题目还会回传给招聘方。',
+      'Questions are laid out horizontally for easier answering. After submission, the system scores automatically and recruiter-assigned results are synced back.'
+    ),
+    refresh: pickLanguage(language, '刷新测评', 'Refresh Assessments'),
+    total: pickLanguage(language, '题目总数', 'Total Assessments'),
+    practice: pickLanguage(language, '岗位自测', 'Practice'),
+    assigned: pickLanguage(language, '招聘方发题', 'Assigned'),
+    completed: pickLanguage(language, '已完成评分', 'Scored'),
+    practiceTitle: pickLanguage(language, '岗位自测', 'Practice Interview'),
+    practiceDescription: pickLanguage(
+      language,
+      '只针对你已经投递过的岗位发起一次模拟 AI 面试，提前找找感觉。',
+      'Launch a mock AI interview for a role you already applied to and warm up before the real one.'
+    ),
+    startPractice: pickLanguage(language, '开始一次岗位自测', 'Start Practice Interview'),
+    generating: pickLanguage(language, '生成中...', 'Generating...'),
+    selectAppliedJob: pickLanguage(language, '选择已投递岗位', 'Choose Applied Role'),
+    noAppliedJobs: pickLanguage(language, '暂无已投递岗位', 'No applied roles yet'),
+    selectResume: pickLanguage(language, '选择用于自测的简历', 'Choose Resume for Practice'),
+    noResume: pickLanguage(language, '暂无简历', 'No resumes'),
+    myAssessments: pickLanguage(language, '我的题目', 'My Assessments'),
+    emptyAssessments: pickLanguage(
+      language,
+      '暂时还没有题目。你可以先发起一次岗位自测。',
+      'No assessments yet. Start with a practice interview.'
+    ),
+    mockInterview: pickLanguage(language, '我的模拟面试', 'My Mock Interview'),
+    unnamedCompany: pickLanguage(language, '未标注公司', 'Unspecified Company'),
+    questions: pickLanguage(language, '道题', 'questions'),
+    practiceFor: pickLanguage(language, '模拟岗位', 'Practice Role'),
+    recruiterFrom: pickLanguage(language, '招聘方', 'Recruiter'),
+    company: pickLanguage(language, '公司', 'Company'),
+    saveDraft: pickLanguage(language, '保存草稿', 'Save Draft'),
+    saving: pickLanguage(language, '保存中...', 'Saving...'),
+    submit: pickLanguage(language, '提交并自动评分', 'Submit & Score'),
+    submitting: pickLanguage(language, '提交中...', 'Submitting...'),
+    questionLabel: pickLanguage(language, '第', 'Q'),
+    answered: pickLanguage(language, '已作答', 'Answered'),
+    unanswered: pickLanguage(language, '未作答', 'Pending'),
+    currentQuestion: pickLanguage(language, '当前题目', 'Current Question'),
+    nextQuestion: pickLanguage(language, '下一题', 'Next'),
+    finalQuestion: pickLanguage(language, '已经是最后一题', 'Last Question'),
+    answerPlaceholder: pickLanguage(
+      language,
+      '在这里直接作答，支持先写草稿再提交。',
+      'Write your answer here. You can save a draft before submitting.'
+    ),
+    expandFeedback: pickLanguage(language, '展开题目要点与反馈', 'Expand Rubric & Feedback'),
+    expectedPoints: pickLanguage(language, '考察要点', 'Expected Points'),
+    feedback: pickLanguage(language, '系统反馈', 'System Feedback'),
+    feedbackPlaceholder: pickLanguage(
+      language,
+      '提交评分后，这里会显示每道题的自动反馈。',
+      'Automatic feedback for each question will appear here after scoring.'
+    ),
+    strengths: pickLanguage(language, '表现较好', 'What Went Well'),
+    gaps: pickLanguage(language, '仍可补强', 'Needs Improvement'),
+    none: pickLanguage(language, '暂无', 'None'),
+    noActiveRecord: pickLanguage(language, '还没有待作答的题目。', 'No assessment is waiting for your answer.'),
+  }
 
   useEffect(() => {
     void loadData()
@@ -169,15 +245,27 @@ export function CandidateAssessmentCenter() {
       const resumePayload = (await resumeResponse.json()) as ResumeListItem[] | { error?: string }
 
       if (!assessmentResponse.ok || !Array.isArray(assessmentPayload)) {
-        throw new Error(!Array.isArray(assessmentPayload) && assessmentPayload.error ? assessmentPayload.error : '测评列表加载失败。')
+        throw new Error(
+          !Array.isArray(assessmentPayload) && assessmentPayload.error
+            ? assessmentPayload.error
+            : copy.assessmentsFailed
+        )
       }
 
       if (!applicationResponse.ok || !Array.isArray(applicationPayload)) {
-        throw new Error(!Array.isArray(applicationPayload) && applicationPayload.error ? applicationPayload.error : '投递岗位加载失败。')
+        throw new Error(
+          !Array.isArray(applicationPayload) && applicationPayload.error
+            ? applicationPayload.error
+            : copy.applicationsFailed
+        )
       }
 
       if (!resumeResponse.ok || !Array.isArray(resumePayload)) {
-        throw new Error(!Array.isArray(resumePayload) && resumePayload.error ? resumePayload.error : '简历列表加载失败。')
+        throw new Error(
+          !Array.isArray(resumePayload) && resumePayload.error
+            ? resumePayload.error
+            : copy.resumesFailed
+        )
       }
 
       const sortedApplications = [...applicationPayload].sort(
@@ -189,7 +277,7 @@ export function CandidateAssessmentCenter() {
       setResumes(resumePayload)
       setActiveRecordId((current) => current ?? assessmentPayload[0]?.id ?? null)
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'AI 面试中心加载失败。')
+      setError(loadError instanceof Error ? loadError.message : copy.loadFailed)
     } finally {
       setLoading(false)
     }
@@ -258,7 +346,7 @@ export function CandidateAssessmentCenter() {
 
   async function createPracticeAssessment() {
     if (!practiceJobId) {
-      setError('请先选择一个已投递岗位。')
+      setError(copy.selectJob)
       return
     }
 
@@ -279,14 +367,16 @@ export function CandidateAssessmentCenter() {
 
       const payload = (await response.json()) as AssessmentRecord | { error?: string }
       if (!response.ok || !('id' in payload)) {
-        throw new Error('error' in payload && payload.error ? payload.error : '岗位自测创建失败。')
+        throw new Error(
+          'error' in payload && payload.error ? payload.error : copy.createPracticeFailed
+        )
       }
 
       setRecords((current) => syncRecord(current, payload))
       setActiveRecordId(payload.id)
-      setMessage('岗位自测题目已生成，你可以直接开始模拟作答。')
+      setMessage(copy.createPracticeSuccess)
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : '岗位自测创建失败。')
+      setError(createError instanceof Error ? createError.message : copy.createPracticeFailed)
     } finally {
       setCreatingPractice(false)
     }
@@ -313,13 +403,13 @@ export function CandidateAssessmentCenter() {
 
       const payload = (await response.json()) as AssessmentRecord | { error?: string }
       if (!response.ok || !('id' in payload)) {
-        throw new Error('error' in payload && payload.error ? payload.error : '草稿保存失败。')
+        throw new Error('error' in payload && payload.error ? payload.error : copy.saveDraftFailed)
       }
 
       setRecords((current) => syncRecord(current, payload))
-      setMessage('草稿已保存。')
+      setMessage(copy.saveDraftSuccess)
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : '草稿保存失败。')
+      setError(saveError instanceof Error ? saveError.message : copy.saveDraftFailed)
     } finally {
       setSaving(false)
     }
@@ -345,17 +435,15 @@ export function CandidateAssessmentCenter() {
 
       const payload = (await response.json()) as AssessmentRecord | { error?: string }
       if (!response.ok || !('id' in payload)) {
-        throw new Error('error' in payload && payload.error ? payload.error : '提交失败。')
+        throw new Error('error' in payload && payload.error ? payload.error : copy.submitFailed)
       }
 
       setRecords((current) => syncRecord(current, payload))
       setMessage(
-        activeRecord.kind === 'practice'
-          ? '自测已完成评分，你可以在分析页对比自测和招聘方题目的结果。'
-          : '已提交，系统已自动复评并同步结果给招聘方。'
+        activeRecord.kind === 'practice' ? copy.submitPracticeSuccess : copy.submitAssignedSuccess
       )
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : '提交失败。')
+      setError(submitError instanceof Error ? submitError.message : copy.submitFailed)
     } finally {
       setSubmitting(false)
     }
@@ -365,7 +453,7 @@ export function CandidateAssessmentCenter() {
     return (
       <div className="card flex items-center justify-center py-16">
         <Loader2 className="mr-3 h-5 w-5 animate-spin text-slate-400" />
-        <span className="text-sm text-slate-500">正在加载 AI 面试中心...</span>
+        <span className="text-sm text-slate-500">{copy.loading}</span>
       </div>
     )
   }
@@ -376,33 +464,31 @@ export function CandidateAssessmentCenter() {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-700">
             <Sparkles className="h-4 w-4" />
-            <span>AI 面试中心</span>
+            <span>{copy.title}</span>
           </div>
-          <h2 className="mt-4 text-3xl font-semibold text-slate-900">已投岗位可以先做自测，招聘方发来的题目也会在这里集中处理。</h2>
-          <p className="mt-2 text-sm leading-7 text-slate-600">
-            题目切换改成横向排布，方便连续作答。提交后系统会自动评分，招聘方发来的题目还会回传给招聘方。
-          </p>
+          <h2 className="mt-4 text-3xl font-semibold text-slate-900">{copy.heading}</h2>
+          <p className="mt-2 text-sm leading-7 text-slate-600">{copy.description}</p>
         </div>
         <button onClick={() => void loadData()} className="btn-secondary">
-          刷新测评
+          {copy.refresh}
         </button>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="card">
-          <p className="text-sm text-slate-500">题目总数</p>
+          <p className="text-sm text-slate-500">{copy.total}</p>
           <p className="mt-2 text-3xl font-semibold text-slate-900">{stats.total}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">岗位自测</p>
+          <p className="text-sm text-slate-500">{copy.practice}</p>
           <p className="mt-2 text-3xl font-semibold text-violet-700">{stats.practice}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">招聘方发题</p>
+          <p className="text-sm text-slate-500">{copy.assigned}</p>
           <p className="mt-2 text-3xl font-semibold text-sky-700">{stats.recruiterAssigned}</p>
         </div>
         <div className="card">
-          <p className="text-sm text-slate-500">已完成评分</p>
+          <p className="text-sm text-slate-500">{copy.completed}</p>
           <p className="mt-2 text-3xl font-semibold text-emerald-700">{stats.completed}</p>
         </div>
       </div>
@@ -425,19 +511,23 @@ export function CandidateAssessmentCenter() {
       <div className="card">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900">岗位自测</h3>
-            <p className="mt-1 text-sm text-slate-500">只针对你已经投递过的岗位发起一次模拟 AI 面试，提前找找感觉。</p>
+            <h3 className="text-lg font-semibold text-slate-900">{copy.practiceTitle}</h3>
+            <p className="mt-1 text-sm text-slate-500">{copy.practiceDescription}</p>
           </div>
-          <button onClick={() => void createPracticeAssessment()} className="btn-primary flex items-center gap-2" disabled={creatingPractice || applications.length === 0}>
+          <button
+            onClick={() => void createPracticeAssessment()}
+            className="btn-primary flex items-center gap-2"
+            disabled={creatingPractice || applications.length === 0}
+          >
             {creatingPractice ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlayCircle className="h-4 w-4" />}
-            <span>{creatingPractice ? '生成中...' : '开始一次岗位自测'}</span>
+            <span>{creatingPractice ? copy.generating : copy.startPractice}</span>
           </button>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="block">
-            <p className="mb-2 text-sm font-medium text-slate-900">选择已投递岗位</p>
+            <p className="mb-2 text-sm font-medium text-slate-900">{copy.selectAppliedJob}</p>
             <select value={practiceJobId} onChange={(event) => setPracticeJobId(event.target.value)} className="input-field">
-              {practiceOptions.length === 0 && <option value="">暂无已投递岗位</option>}
+              {practiceOptions.length === 0 && <option value="">{copy.noAppliedJobs}</option>}
               {practiceOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -446,12 +536,12 @@ export function CandidateAssessmentCenter() {
             </select>
           </label>
           <label className="block">
-            <p className="mb-2 text-sm font-medium text-slate-900">选择用于自测的简历</p>
+            <p className="mb-2 text-sm font-medium text-slate-900">{copy.selectResume}</p>
             <select value={practiceResumeId} onChange={(event) => setPracticeResumeId(event.target.value)} className="input-field">
-              {resumes.length === 0 && <option value="">暂无简历</option>}
+              {resumes.length === 0 && <option value="">{copy.noResume}</option>}
               {resumes.map((resume) => (
                 <option key={resume.id} value={resume.id}>
-                  {resume.fileName} · {resume.score} 分
+                  {resume.fileName} · {resume.score}
                 </option>
               ))}
             </select>
@@ -461,11 +551,11 @@ export function CandidateAssessmentCenter() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
         <div className="card space-y-3">
-          <h3 className="text-lg font-semibold text-slate-900">我的题目</h3>
+          <h3 className="text-lg font-semibold text-slate-900">{copy.myAssessments}</h3>
 
           {records.length === 0 && (
             <div className="rounded-2xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500">
-              暂时还没有题目。你可以先发起一次岗位自测。
+              {copy.emptyAssessments}
             </div>
           )}
 
@@ -480,16 +570,20 @@ export function CandidateAssessmentCenter() {
               }`}
             >
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${kindTone(record.kind)}`}>
-                  {kindLabel(record.kind)}
+                <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${record.kind === 'practice' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700'}`}>
+                  {assessmentKindLabel(record.kind, language)}
                 </span>
                 <span className={`rounded-full px-2 py-1 text-[11px] ${statusTone(record.status)}`}>
-                  {statusLabel(record.status)}
+                  {assessmentStatusLabel(record.status, language)}
                 </span>
               </div>
-              <p className="mt-3 line-clamp-2 text-sm font-medium text-slate-900">{record.jobTitle || record.title}</p>
+              <p className="mt-3 line-clamp-2 text-sm font-medium text-slate-900">
+                {record.jobTitle || record.title}
+              </p>
               <p className="mt-2 text-xs text-slate-500">
-                {record.company || (record.kind === 'practice' ? '我的模拟面试' : '未标注公司')} · {record.questions.length} 道题
+                {record.company ||
+                  (record.kind === 'practice' ? copy.mockInterview : copy.unnamedCompany)}{' '}
+                · {record.questions.length} {copy.questions}
               </p>
             </button>
           ))}
@@ -501,34 +595,37 @@ export function CandidateAssessmentCenter() {
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-2xl font-semibold text-slate-900">{activeRecord.jobTitle || activeRecord.title}</h3>
-                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${kindTone(activeRecord.kind)}`}>
-                      {kindLabel(activeRecord.kind)}
+                    <h3 className="text-2xl font-semibold text-slate-900">
+                      {activeRecord.jobTitle || activeRecord.title}
+                    </h3>
+                    <span className={`rounded-full px-3 py-1 text-xs font-medium ${activeRecord.kind === 'practice' ? 'bg-violet-100 text-violet-700' : 'bg-sky-100 text-sky-700'}`}>
+                      {assessmentKindLabel(activeRecord.kind, language)}
                     </span>
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${statusTone(activeRecord.status)}`}>
-                      {statusLabel(activeRecord.status)}
+                      {assessmentStatusLabel(activeRecord.status, language)}
                     </span>
                     {activeRecord.summary.overallScore !== null && (
                       <span className={`rounded-full px-3 py-1 text-xs font-medium ${recommendationTone(activeRecord.summary.recommendation)}`}>
-                        {activeRecord.summary.overallScore} 分 / {recommendationLabel(activeRecord.summary.recommendation)}
+                        {activeRecord.summary.overallScore} ·{' '}
+                        {assessmentRecommendationLabel(activeRecord.summary.recommendation, language)}
                       </span>
                     )}
                   </div>
                   <p className="mt-2 text-sm text-slate-600">
                     {activeRecord.kind === 'practice'
-                      ? `模拟岗位：${activeRecord.company || '目标公司'}`
-                      : `招聘方：${activeRecord.recruiterName || '未标注'}，公司：${activeRecord.company || '未标注'}`}
+                      ? `${copy.practiceFor}: ${activeRecord.company || pickLanguage(language, '目标公司', 'Target Company')}`
+                      : `${copy.recruiterFrom}: ${activeRecord.recruiterName || pickLanguage(language, '未标注', 'Unknown')} · ${copy.company}: ${activeRecord.company || pickLanguage(language, '未标注', 'Unknown')}`}
                   </p>
                   <p className="mt-2 text-sm leading-7 text-slate-600">{activeRecord.summary.summary}</p>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <button onClick={() => void saveDraft()} className="btn-secondary flex items-center gap-2" disabled={saving}>
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    <span>{saving ? '保存中...' : '保存草稿'}</span>
+                    <span>{saving ? copy.saving : copy.saveDraft}</span>
                   </button>
                   <button onClick={() => void submitAssessment()} className="btn-primary flex items-center gap-2" disabled={submitting}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                    <span>{submitting ? '提交中...' : '提交并自动评分'}</span>
+                    <span>{submitting ? copy.submitting : copy.submit}</span>
                   </button>
                 </div>
               </div>
@@ -550,9 +647,11 @@ export function CandidateAssessmentCenter() {
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium">第 {index + 1} 题</span>
+                          <span className="text-sm font-medium">
+                            {language === 'en' ? `${copy.questionLabel}${index + 1}` : `${copy.questionLabel}${index + 1} 题`}
+                          </span>
                           <span className={`rounded-full px-2 py-0.5 text-[11px] ${answered ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                            {answered ? '已作答' : '未作答'}
+                            {answered ? copy.answered : copy.unanswered}
                           </span>
                         </div>
                       </button>
@@ -564,8 +663,10 @@ export function CandidateAssessmentCenter() {
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-500">当前题目</p>
-                    <h4 className="mt-2 text-lg font-semibold leading-8 text-slate-900">{activeQuestion.prompt}</h4>
+                    <p className="text-sm font-medium text-slate-500">{copy.currentQuestion}</p>
+                    <h4 className="mt-2 text-lg font-semibold leading-8 text-slate-900">
+                      {activeQuestion.prompt}
+                    </h4>
                   </div>
                   <button
                     type="button"
@@ -573,7 +674,13 @@ export function CandidateAssessmentCenter() {
                     disabled={!hasNextQuestion}
                     className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    <span>{hasNextQuestion ? `下一题 · 第 ${activeQuestionIndex + 2} 题` : '已是最后一题'}</span>
+                    <span>
+                      {hasNextQuestion
+                        ? language === 'en'
+                          ? `${copy.nextQuestion} · Q${activeQuestionIndex + 2}`
+                          : `${copy.nextQuestion} · 第 ${activeQuestionIndex + 2} 题`
+                        : copy.finalQuestion}
+                    </span>
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 </div>
@@ -582,18 +689,18 @@ export function CandidateAssessmentCenter() {
                   value={activeAnswer.answer}
                   onChange={(event) => updateAnswer(activeQuestion.id, event.target.value)}
                   className="input-field mt-4"
-                  placeholder="在这里直接作答，支持先写草稿再提交。"
+                  placeholder={copy.answerPlaceholder}
                 />
               </div>
 
               <details className="rounded-2xl bg-slate-50 p-4">
                 <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-900">
-                  展开题目要点与反馈
+                  {copy.expandFeedback}
                   <ChevronDown className="h-4 w-4 text-slate-400" />
                 </summary>
                 <div className="mt-4 space-y-4">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">考察要点</p>
+                    <p className="text-sm font-medium text-slate-900">{copy.expectedPoints}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {activeQuestion.expectedPoints.map((point) => (
                         <span key={point} className="rounded-full bg-white px-3 py-1 text-xs text-slate-600">
@@ -604,19 +711,23 @@ export function CandidateAssessmentCenter() {
                   </div>
 
                   <div>
-                    <p className="text-sm font-medium text-slate-900">系统反馈</p>
+                    <p className="text-sm font-medium text-slate-900">{copy.feedback}</p>
                     <p className="mt-2 text-sm leading-7 text-slate-600">
-                      {activeAnswer.feedback || '提交评分后，这里会显示每道题的自动反馈。'}
+                      {activeAnswer.feedback || copy.feedbackPlaceholder}
                     </p>
                     {(activeAnswer.strengths.length > 0 || activeAnswer.gaps.length > 0) && (
                       <div className="mt-3 grid gap-3 md:grid-cols-2">
                         <div className="rounded-xl bg-white p-3">
-                          <p className="text-xs text-slate-500">表现较好</p>
-                          <p className="mt-2 text-sm text-slate-700">{activeAnswer.strengths.join('、') || '暂无'}</p>
+                          <p className="text-xs text-slate-500">{copy.strengths}</p>
+                          <p className="mt-2 text-sm text-slate-700">
+                            {activeAnswer.strengths.join(language === 'en' ? ', ' : '、') || copy.none}
+                          </p>
                         </div>
                         <div className="rounded-xl bg-white p-3">
-                          <p className="text-xs text-slate-500">仍可补强</p>
-                          <p className="mt-2 text-sm text-slate-700">{activeAnswer.gaps.join('、') || '暂无'}</p>
+                          <p className="text-xs text-slate-500">{copy.gaps}</p>
+                          <p className="mt-2 text-sm text-slate-700">
+                            {activeAnswer.gaps.join(language === 'en' ? ', ' : '、') || copy.none}
+                          </p>
                         </div>
                       </div>
                     )}
@@ -625,7 +736,7 @@ export function CandidateAssessmentCenter() {
               </details>
             </div>
           ) : (
-            <div className="py-16 text-center text-sm text-slate-500">还没有待作答的题目。</div>
+            <div className="py-16 text-center text-sm text-slate-500">{copy.noActiveRecord}</div>
           )}
         </div>
       </div>

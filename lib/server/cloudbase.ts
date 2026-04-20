@@ -3,12 +3,27 @@ import os from 'os'
 import path from 'path'
 
 import * as cloudbase from '@cloudbase/node-sdk'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+
+import { getRemoteDataProvider, isCnEdition, type RemoteDataProvider } from '@/lib/app-version'
 
 const DEFAULT_PAGE_SIZE = 100
 const cloudFallbackWarnings = new Set<string>()
 const ensuredCollections = new Set<string>()
 
 type CloudDatabase = ReturnType<cloudbase.CloudBase['database']>
+
+type SupabaseDocumentsRow = {
+  document: Record<string, unknown> | null
+}
+
+interface SupabaseRuntimeConfig {
+  url: string
+  serviceRoleKey: string
+  schema: string
+  documentsTable: string
+  storageBucket: string
+}
 
 export interface CloudListOptions {
   where?: Record<string, unknown>
@@ -21,14 +36,22 @@ export interface CloudListOptions {
 
 let cachedApp: cloudbase.CloudBase | null | undefined
 let cachedDb: CloudDatabase | null | undefined
+let cachedSupabase: SupabaseClient<any, any, any, any, any> | null | undefined
 
 function trimEnvValue(value: string | undefined) {
   const trimmed = value?.trim()
   return trimmed ? trimmed : null
 }
 
+function getRemoteProvider(): RemoteDataProvider {
+  return getRemoteDataProvider()
+}
+
 function shouldPreferLocalStorage() {
-  return trimEnvValue(process.env.CLOUDBASE_PREFER_LOCAL) === '1'
+  return (
+    trimEnvValue(process.env.DATA_PREFER_LOCAL) === '1' ||
+    trimEnvValue(process.env.CLOUDBASE_PREFER_LOCAL) === '1'
+  )
 }
 
 function getDefaultLocalDataRoot() {
@@ -96,6 +119,23 @@ function getCloudBaseDbConfig(): cloudbase.ICloudBaseDBConfig {
   return config
 }
 
+function getSupabaseConfig(): SupabaseRuntimeConfig | null {
+  const url = trimEnvValue(process.env.SUPABASE_URL)
+  const serviceRoleKey = trimEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY)
+
+  if (!url || !serviceRoleKey) {
+    return null
+  }
+
+  return {
+    url,
+    serviceRoleKey,
+    schema: trimEnvValue(process.env.SUPABASE_SCHEMA) || 'public',
+    documentsTable: trimEnvValue(process.env.SUPABASE_DOCUMENTS_TABLE) || 'app_documents',
+    storageBucket: trimEnvValue(process.env.SUPABASE_STORAGE_BUCKET) || 'app-assets',
+  }
+}
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message
@@ -105,12 +145,14 @@ function getErrorMessage(error: unknown) {
 }
 
 function warnCloudFallback(operation: string, error: unknown) {
-  if (cloudFallbackWarnings.has(operation)) {
+  const cacheKey = `${getRemoteProvider()}:${operation}`
+
+  if (cloudFallbackWarnings.has(cacheKey)) {
     return
   }
 
-  cloudFallbackWarnings.add(operation)
-  console.warn(`[cloudbase] ${operation} fell back to local storage: ${getErrorMessage(error)}`)
+  cloudFallbackWarnings.add(cacheKey)
+  console.warn(`[${getRemoteProvider()}] ${operation} fell back to local storage: ${getErrorMessage(error)}`)
 }
 
 function sanitizeCloudValue(value: unknown): unknown {
@@ -151,15 +193,16 @@ function normalizeCloudDocuments<T>(documents: unknown[]) {
 
 function isCollectionExistsError(error: unknown) {
   const message = getErrorMessage(error)
-  return /already exists?|已存在|table exists?|table exist|collection exists?|resource\s*exist|exists/i.test(message)
+  return /already exists?|宸插瓨鍦▅table exists?|table exist|collection exists?|resource\s*exist|exists/i.test(message)
 }
 
 function getCollectionCacheKey(collectionName: string) {
-  const env = trimEnvValue(process.env.CLOUDBASE_ENV_ID) ?? 'local'
-  const database = trimEnvValue(process.env.CLOUDBASE_DATABASE_NAME) ?? 'default'
-  const instance = trimEnvValue(process.env.CLOUDBASE_DATABASE_INSTANCE) ?? 'default'
+  const provider = getRemoteProvider()
+  const env = trimEnvValue(process.env.CLOUDBASE_ENV_ID) ?? trimEnvValue(process.env.SUPABASE_URL) ?? 'local'
+  const database = trimEnvValue(process.env.CLOUDBASE_DATABASE_NAME) ?? trimEnvValue(process.env.SUPABASE_DOCUMENTS_TABLE) ?? 'default'
+  const instance = trimEnvValue(process.env.CLOUDBASE_DATABASE_INSTANCE) ?? trimEnvValue(process.env.SUPABASE_SCHEMA) ?? 'default'
 
-  return [env, database, instance, collectionName].join(':')
+  return [provider, env, database, instance, collectionName].join(':')
 }
 
 function getCloudApp() {
@@ -194,21 +237,86 @@ function getCloudDb() {
   return cachedDb
 }
 
+function getSupabaseClient() {
+  if (cachedSupabase !== undefined) {
+    return cachedSupabase
+  }
+
+  const config = getSupabaseConfig()
+
+  if (!config) {
+    cachedSupabase = null
+    return cachedSupabase
+  }
+
+  cachedSupabase = createClient(config.url, config.serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    db: {
+      schema: config.schema,
+    },
+  })
+
+  return cachedSupabase
+}
+
 export function isCloudBaseEnabled() {
-  return !shouldPreferLocalStorage() && getCloudBaseAppConfig() !== null
+  return !shouldPreferLocalStorage() && getRemoteProvider() === 'cloudbase' && getCloudBaseAppConfig() !== null
+}
+
+export function isSupabaseEnabled() {
+  return !shouldPreferLocalStorage() && getRemoteProvider() === 'supabase' && getSupabaseConfig() !== null
+}
+
+function isRemoteStorageEnabled() {
+  return isCloudBaseEnabled() || isSupabaseEnabled()
 }
 
 export function getCloudBaseRuntimeConfig() {
+  const supabaseConfig = getSupabaseConfig()
+
   return {
-    enabled: isCloudBaseEnabled(),
+    edition: isCnEdition() ? 'cn' : 'global',
+    provider: getRemoteProvider(),
+    enabled: isRemoteStorageEnabled(),
     preferLocal: shouldPreferLocalStorage(),
     envId: trimEnvValue(process.env.CLOUDBASE_ENV_ID),
     databaseName: trimEnvValue(process.env.CLOUDBASE_DATABASE_NAME),
     databaseInstance: trimEnvValue(process.env.CLOUDBASE_DATABASE_INSTANCE),
+    supabaseUrl: supabaseConfig?.url ?? null,
+    supabaseSchema: supabaseConfig?.schema ?? null,
+    supabaseDocumentsTable: supabaseConfig?.documentsTable ?? null,
+    supabaseStorageBucket: supabaseConfig?.storageBucket ?? null,
   }
 }
 
+function requireSupabaseConfig() {
+  const config = getSupabaseConfig()
+
+  if (!config) {
+    throw new Error('Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY first.')
+  }
+
+  return config
+}
+
+function requireSupabaseClient() {
+  const client = getSupabaseClient()
+
+  if (!client) {
+    throw new Error('Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY first.')
+  }
+
+  return client
+}
+
 export function requireCloudDb() {
+  if (getRemoteProvider() !== 'cloudbase') {
+    throw new Error('CloudBase is not the active remote provider for the current edition.')
+  }
+
   const db = getCloudDb()
 
   if (!db) {
@@ -219,6 +327,10 @@ export function requireCloudDb() {
 }
 
 export function requireCloudApp() {
+  if (getRemoteProvider() !== 'cloudbase') {
+    throw new Error('CloudBase is not the active remote provider for the current edition.')
+  }
+
   const app = getCloudApp()
 
   if (!app) {
@@ -229,6 +341,22 @@ export function requireCloudApp() {
 }
 
 export async function uploadCloudFile(cloudPath: string, fileContent: Buffer) {
+  if (isSupabaseEnabled()) {
+    const client = requireSupabaseClient()
+    const config = requireSupabaseConfig()
+    const { data, error } = await client.storage.from(config.storageBucket).upload(cloudPath, fileContent, {
+      upsert: true,
+    })
+
+    if (error) {
+      throw new Error(`Supabase upload failed: ${error.message}`)
+    }
+
+    return {
+      fileID: data?.path ?? cloudPath,
+    }
+  }
+
   const app = requireCloudApp()
   return app.uploadFile({
     cloudPath,
@@ -237,6 +365,18 @@ export async function uploadCloudFile(cloudPath: string, fileContent: Buffer) {
 }
 
 export async function getCloudTempFileUrl(fileID: string, maxAge = 3600) {
+  if (isSupabaseEnabled()) {
+    const client = requireSupabaseClient()
+    const config = requireSupabaseConfig()
+    const { data, error } = await client.storage.from(config.storageBucket).createSignedUrl(fileID, maxAge)
+
+    if (error) {
+      throw new Error(`Supabase signed URL creation failed: ${error.message}`)
+    }
+
+    return data?.signedUrl ?? null
+  }
+
   const app = requireCloudApp()
   const result = await app.getTempFileURL({
     fileList: [
@@ -251,6 +391,18 @@ export async function getCloudTempFileUrl(fileID: string, maxAge = 3600) {
 }
 
 export async function deleteCloudFile(fileID: string) {
+  if (isSupabaseEnabled()) {
+    const client = requireSupabaseClient()
+    const config = requireSupabaseConfig()
+    const { error } = await client.storage.from(config.storageBucket).remove([fileID])
+
+    if (error) {
+      throw new Error(`Supabase delete failed: ${error.message}`)
+    }
+
+    return
+  }
+
   const app = requireCloudApp()
   return app.deleteFile({
     fileList: [fileID],
@@ -303,7 +455,143 @@ async function executeCloudQuery<T>(query: any, limit?: number) {
   return results
 }
 
+function compareDocumentValues(left: unknown, right: unknown) {
+  if (left === right) {
+    return 0
+  }
+
+  if (left === undefined || left === null) {
+    return -1
+  }
+
+  if (right === undefined || right === null) {
+    return 1
+  }
+
+  if (typeof left === 'number' && typeof right === 'number') {
+    return left - right
+  }
+
+  const leftDate = typeof left === 'string' ? Date.parse(left) : Number.NaN
+  const rightDate = typeof right === 'string' ? Date.parse(right) : Number.NaN
+
+  if (Number.isFinite(leftDate) && Number.isFinite(rightDate)) {
+    return leftDate - rightDate
+  }
+
+  return String(left).localeCompare(String(right), 'en')
+}
+
+function applyDocumentOrder<T>(documents: T[], orderBy: CloudListOptions['orderBy']) {
+  if (!orderBy) {
+    return documents
+  }
+
+  const direction = orderBy.direction === 'desc' ? -1 : 1
+
+  return [...documents].sort((left, right) => {
+    const leftValue = (left as Record<string, unknown>)[orderBy.field]
+    const rightValue = (right as Record<string, unknown>)[orderBy.field]
+    return compareDocumentValues(leftValue, rightValue) * direction
+  })
+}
+
+function normalizeSupabaseDocuments<T>(rows: SupabaseDocumentsRow[]) {
+  return rows
+    .map((row) => row.document)
+    .filter((document): document is Record<string, unknown> => Boolean(document))
+    .map((document) => document as T)
+}
+
+async function listSupabaseDocuments<T>(collectionName: string, options: CloudListOptions = {}) {
+  const client = requireSupabaseClient()
+  const config = requireSupabaseConfig()
+  const where = options.where ? sanitizeCloudObject(options.where) : null
+  const rows: SupabaseDocumentsRow[] = []
+  let offset = 0
+
+  while (true) {
+    let query = client
+      .from(config.documentsTable)
+      .select('document')
+      .eq('collection', collectionName)
+      .range(offset, offset + DEFAULT_PAGE_SIZE - 1)
+
+    if (where && Object.keys(where).length > 0) {
+      query = query.contains('document', where)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      throw new Error(`Supabase query failed: ${error.message}`)
+    }
+
+    const batch = (data ?? []) as SupabaseDocumentsRow[]
+    rows.push(...batch)
+
+    if (batch.length < DEFAULT_PAGE_SIZE) {
+      break
+    }
+
+    offset += batch.length
+  }
+
+  const documents = applyDocumentOrder(normalizeSupabaseDocuments<T>(rows), options.orderBy)
+  return typeof options.limit === 'number' ? documents.slice(0, options.limit) : documents
+}
+
+async function getSupabaseDocumentById<T>(collectionName: string, id: string) {
+  const client = requireSupabaseClient()
+  const config = requireSupabaseConfig()
+  const { data, error } = await client
+    .from(config.documentsTable)
+    .select('document')
+    .eq('collection', collectionName)
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) {
+    throw new Error(`Supabase get failed: ${error.message}`)
+  }
+
+  return (data?.document as T | null | undefined) ?? null
+}
+
+async function putSupabaseDocument<T extends object>(collectionName: string, id: string, value: T) {
+  const client = requireSupabaseClient()
+  const config = requireSupabaseConfig()
+  const { error } = await client.from(config.documentsTable).upsert(
+    {
+      collection: collectionName,
+      id,
+      document: sanitizeCloudObject(value as Record<string, unknown>),
+    },
+    {
+      onConflict: 'collection,id',
+    }
+  )
+
+  if (error) {
+    throw new Error(`Supabase upsert failed: ${error.message}`)
+  }
+}
+
+async function deleteSupabaseDocument(collectionName: string, id: string) {
+  const client = requireSupabaseClient()
+  const config = requireSupabaseConfig()
+  const { error } = await client.from(config.documentsTable).delete().eq('collection', collectionName).eq('id', id)
+
+  if (error) {
+    throw new Error(`Supabase delete failed: ${error.message}`)
+  }
+}
+
 export async function listCloudDocuments<T>(collectionName: string, options: CloudListOptions = {}) {
+  if (isSupabaseEnabled()) {
+    return listSupabaseDocuments<T>(collectionName, options)
+  }
+
   const db = requireCloudDb()
   await ensureCloudCollection(collectionName)
 
@@ -331,6 +619,10 @@ export async function findCloudDocument<T>(collectionName: string, options: Omit
 }
 
 export async function getCloudDocumentById<T>(collectionName: string, id: string) {
+  if (isSupabaseEnabled()) {
+    return getSupabaseDocumentById<T>(collectionName, id)
+  }
+
   const db = requireCloudDb()
   await ensureCloudCollection(collectionName)
 
@@ -341,6 +633,11 @@ export async function getCloudDocumentById<T>(collectionName: string, id: string
 }
 
 export async function putCloudDocument<T extends object>(collectionName: string, id: string, value: T) {
+  if (isSupabaseEnabled()) {
+    await putSupabaseDocument(collectionName, id, value)
+    return
+  }
+
   const db = requireCloudDb()
   await ensureCloudCollection(collectionName)
 
@@ -348,6 +645,11 @@ export async function putCloudDocument<T extends object>(collectionName: string,
 }
 
 export async function deleteCloudDocument(collectionName: string, id: string) {
+  if (isSupabaseEnabled()) {
+    await deleteSupabaseDocument(collectionName, id)
+    return
+  }
+
   const db = requireCloudDb()
   await ensureCloudCollection(collectionName)
 
@@ -359,7 +661,7 @@ export async function withCloudBaseFallback<T>(
   cloudOperation: () => Promise<T>,
   localOperation: () => Promise<T>
 ) {
-  if (!isCloudBaseEnabled()) {
+  if (!isRemoteStorageEnabled()) {
     return localOperation()
   }
 

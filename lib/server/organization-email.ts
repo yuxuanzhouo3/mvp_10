@@ -1,6 +1,5 @@
-import nodemailer from 'nodemailer'
-
 import { buildContactOptionHtml, buildContactOptionTextLines } from '@/lib/server/contact-options'
+import { createMailTransport, getDefaultMailDeliveryConfig, getDefaultSupportEmail } from '@/lib/server/mail-config'
 import type { OrganizationLead } from '@/types/organization'
 
 export interface OrganizationInviteDeliveryResult {
@@ -25,8 +24,7 @@ function buildInviteContent(record: OrganizationLead) {
   const platformName = process.env.PLATFORM_NAME || 'JobSearch Platform'
   const onboardingUrl = process.env.EMPLOYER_ONBOARDING_URL
   const schedulerUrl = process.env.EMPLOYER_DEMO_URL
-  const supportEmail =
-    process.env.RECRUITING_SUPPORT_EMAIL || process.env.SMTP_FROM || 'recruiting@example.com'
+  const supportEmail = getDefaultSupportEmail()
   const contactName = record.contact.contactName || 'team'
   const subject = `${platformName}: Invitation to onboard your hiring team`
 
@@ -82,13 +80,9 @@ export async function sendOrganizationInviteEmail(
   }
 
   const { subject, text, html } = buildInviteContent(record)
-  const host = process.env.SMTP_HOST
-  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587
-  const user = process.env.SMTP_USER
-  const pass = process.env.SMTP_PASS
-  const from = process.env.SMTP_FROM
+  const config = getDefaultMailDeliveryConfig()
 
-  if (!host || !from) {
+  if (!config) {
     return {
       mode: 'preview',
       subject,
@@ -98,17 +92,12 @@ export async function sendOrganizationInviteEmail(
     }
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: user && pass ? { user, pass } : undefined,
-  })
+  const transporter = createMailTransport(config)
 
   const info = await transporter.sendMail({
-    from,
+    from: config.from,
     to: record.contact.email,
-    replyTo: process.env.SMTP_REPLY_TO || from,
+    replyTo: config.replyTo,
     subject,
     text,
     html,

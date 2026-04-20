@@ -12,9 +12,21 @@ import {
   Wand2,
 } from 'lucide-react'
 
+import {
+  assessmentCategoryLabel,
+  assessmentDifficultyLabel,
+  assessmentStatusLabel,
+  pickLanguage,
+  recruiterRecommendationLabel,
+} from '@/lib/i18n'
 import { getStoredAuthToken } from './AuthProvider'
+import { useLanguage } from './LanguageProvider'
 import { TechnicalTag } from './TechnicalText'
-import type { AssessmentQuestion, AssessmentQuestionCategory, AssessmentRecord } from '@/types/assessment'
+import type {
+  AssessmentQuestion,
+  AssessmentQuestionCategory,
+  AssessmentRecord,
+} from '@/types/assessment'
 import type { JobRecord } from '@/types/job'
 import type { RecruiterCandidateRecord } from '@/types/recruiter'
 import type { RecruiterScreeningRecord } from '@/types/screening'
@@ -25,28 +37,12 @@ type DraftOrigin = AssessmentRecord['source'] | 'manual' | null
 function authHeaders(json = false) {
   const token = getStoredAuthToken()
   if (!token) {
-    throw new Error('请先重新登录。')
+    throw new Error('Please sign in again.')
   }
 
   return {
     ...(json ? { 'Content-Type': 'application/json' } : {}),
     Authorization: `Bearer ${token}`,
-  }
-}
-
-function categoryLabel(value: AssessmentQuestionCategory) {
-  switch (value) {
-    case 'technical':
-      return '技术能力'
-    case 'problem_solving':
-      return '问题解决'
-    case 'behavioral':
-      return '行为案例'
-    case 'communication':
-      return '沟通表达'
-    case 'role_fit':
-    default:
-      return '岗位匹配'
   }
 }
 
@@ -73,61 +69,12 @@ function splitPoints(value: string) {
     .filter(Boolean)
 }
 
-function recommendationLabel(value: string | null | undefined) {
-  switch (value) {
-    case 'strong_yes':
-      return '强烈推荐'
-    case 'yes':
-      return '推荐'
-    case 'hold':
-      return '待复核'
-    case 'no':
-      return '谨慎推进'
-    default:
-      return '待评估'
-  }
-}
-
-function assessmentStatusLabel(value: AssessmentRecord['status']) {
-  switch (value) {
-    case 'draft':
-      return '待作答'
-    case 'in_progress':
-      return '作答中'
-    case 'submitted':
-      return '已提交，待评分'
-    case 'scored':
-      return '已评分'
-    default:
-      return value
-  }
-}
-
 function normalizeFromScreening(record: RecruiterScreeningRecord | null | undefined) {
   return record?.questions.map((question) => ({ ...question })) ?? null
 }
 
-function buildTitle(job: JobRecord | null, candidate: RecruiterCandidateRecord | null, sourceMode: QuestionSourceMode) {
-  if (!job) {
-    return 'AI 面试题'
-  }
-
-  const name = candidate?.application.userName || '候选人'
-  return sourceMode === 'manual' ? `招聘方自定义面试题 - ${job.title} - ${name}` : `AI 初筛面试题 - ${job.title} - ${name}`
-}
-
-function buildGeneratedFrom(job: JobRecord | null, candidate: RecruiterCandidateRecord | null, sourceMode: QuestionSourceMode) {
-  if (!job) {
-    return '由招聘方生成。'
-  }
-
-  const resumeName = candidate?.selectedResume?.fileName || candidate?.availableResumes[0]?.fileName || '候选人简历'
-  return sourceMode === 'manual'
-    ? `由招聘方结合 ${job.title} 岗位要求和 ${resumeName} 手动编辑题目。`
-    : `由系统结合 ${job.title} 岗位要求与候选人简历自动生成题目和参考答案，并允许招聘方二次润色。`
-}
-
 export function RecruiterAIScreeningPanel() {
+  const { language } = useLanguage()
   const [jobs, setJobs] = useState<JobRecord[]>([])
   const [selectedJobId, setSelectedJobId] = useState('')
   const [candidates, setCandidates] = useState<RecruiterCandidateRecord[]>([])
@@ -144,13 +91,91 @@ export function RecruiterAIScreeningPanel() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
+  const copy = {
+    jobsFailed: pickLanguage(language, '岗位加载失败。', 'Failed to load jobs.'),
+    candidatesFailed: pickLanguage(language, '候选人加载失败。', 'Failed to load candidates.'),
+    screeningFailed: pickLanguage(language, 'AI 初筛生成失败。', 'Failed to generate AI screening.'),
+    sendFailed: pickLanguage(language, '题目发送失败。', 'Failed to send the assessment.'),
+    selectCandidate: pickLanguage(language, '请先选择一个候选人。', 'Choose a candidate first.'),
+    noResumeForScreening: pickLanguage(language, '当前候选人还没有可用简历，无法生成 AI 初筛。', 'The selected candidate has no available resume for AI screening.'),
+    noResume: pickLanguage(language, '当前候选人还没有可用简历。', 'The selected candidate has no available resume.'),
+    requireAiDraft: pickLanguage(language, '请先点击“生成 AI 题目草稿”，确认题目和参考答案都由 AI 生成后再发送。', 'Generate the AI draft first so the questions and reference answers come from AI before sending.'),
+    requireThreeQuestions: pickLanguage(language, '至少准备 3 道完整题目后才能发送。', 'Prepare at least 3 complete questions before sending.'),
+    loading: pickLanguage(language, '正在加载 AI 初筛页...', 'Loading AI screening...'),
+    title: pickLanguage(language, 'AI 初筛与发题', 'AI Screening & Assessments'),
+    heading: pickLanguage(
+      language,
+      '先选候选人，再决定是 AI 出题还是招聘方手动出题。',
+      'Pick a candidate first, then choose between AI-generated and manual interview questions.'
+    ),
+    description: pickLanguage(
+      language,
+      '这里支持切换候选人、生成 AI 初筛结果、编辑题目、发送给求职者并等待系统自动评分回传。',
+      'Switch candidates, generate AI screening results, edit questions, send them out, and wait for automatic scoring and sync.'
+    ),
+    refresh: pickLanguage(language, '刷新数据', 'Refresh Data'),
+    selectJob: pickLanguage(language, '选择岗位', 'Choose Job'),
+    selectCandidateLabel: pickLanguage(language, '选择候选人', 'Choose Candidate'),
+    noJobs: pickLanguage(language, '暂无岗位', 'No jobs yet'),
+    noCandidates: pickLanguage(language, '当前岗位暂无候选人', 'No candidates for this role'),
+    loadingCandidates: pickLanguage(language, '正在加载候选人数据...', 'Loading candidate data...'),
+    emptyCandidates: pickLanguage(language, '当前岗位还没有投递候选人，暂时无法发题。', 'No candidates have applied to this role yet, so there is nobody to send an assessment to.'),
+    currentResume: pickLanguage(language, '当前简历', 'Current Resume'),
+    notLinked: pickLanguage(language, '未关联', 'Not linked'),
+    resumeScore: pickLanguage(language, '简历评分', 'Resume Score'),
+    job: pickLanguage(language, '岗位', 'Job'),
+    noJobSelected: pickLanguage(language, '未选择岗位', 'No job selected'),
+    noSummary: pickLanguage(language, '当前简历还没有摘要。', 'This resume does not have a summary yet.'),
+    screening: pickLanguage(language, 'AI 初筛结果', 'AI Screening Result'),
+    screeningHint: pickLanguage(language, '可先跑 AI 初筛，再把生成的题目继续编辑后发送。', 'Run AI screening first, then review and edit the generated questions before sending.'),
+    generateDraft: pickLanguage(language, '生成 AI 题目草稿', 'Generate AI Draft'),
+    generating: pickLanguage(language, '生成中...', 'Generating...'),
+    noDraftYet: pickLanguage(language, '当前还没有 AI 题目草稿。请先生成一次，系统会同时产出题目和参考答案。', 'There is no AI draft yet. Generate one first to receive both questions and reference answers.'),
+    summary: pickLanguage(language, '初筛结论', 'Screening Summary'),
+    noScreening: pickLanguage(language, '还没有生成 AI 初筛结果。', 'No AI screening summary has been generated yet.'),
+    expandScores: pickLanguage(language, '展开查看分数、风险和追问点', 'Expand Scores, Risks, and Follow-up Areas'),
+    overallScore: pickLanguage(language, '综合得分', 'Overall Score'),
+    recommendation: pickLanguage(language, '结论', 'Recommendation'),
+    focus: pickLanguage(language, '重点追问', 'Follow-up Focus'),
+    risks: pickLanguage(language, '风险项', 'Risks'),
+    noRisks: pickLanguage(language, '当前未发现明显风险项。', 'No obvious risks detected so far.'),
+    latestAssessment: pickLanguage(language, '最近一次候选人测评状态', 'Latest Candidate Assessment'),
+    pendingScore: pickLanguage(language, '待评分', 'Pending Score'),
+    assessmentDraft: pickLanguage(language, '题目已经发送给候选人，正在等待候选人开始作答。', 'Questions were sent and the system is waiting for the candidate to start answering.'),
+    assessmentProgress: pickLanguage(language, '候选人正在作答，提交后系统会自动评分并回传给招聘方。', 'The candidate is answering now. The system will score and sync results after submission.'),
+    assessmentSubmitted: pickLanguage(language, '候选人已经提交答案，系统正在完成评分，请稍后刷新查看。', 'The candidate submitted answers and the system is finishing scoring. Refresh again shortly.'),
+    noAssessment: pickLanguage(language, '当前候选人还没有返回作答结果。', 'This candidate has not returned any answers yet.'),
+    settings: pickLanguage(language, '发题设置', 'Assessment Settings'),
+    settingsHint: pickLanguage(language, '可以直接使用 AI 草稿，也可以完全手动编辑题目。', 'Use the AI draft directly or switch to fully manual editing.'),
+    aiMode: pickLanguage(language, 'AI 出题', 'AI Mode'),
+    manualMode: pickLanguage(language, '手动出题', 'Manual Mode'),
+    assessmentTitle: pickLanguage(language, '题目标题', 'Assessment Title'),
+    assessmentDescription: pickLanguage(language, '题目说明', 'Assessment Description'),
+    questionLabel: pickLanguage(language, '第', 'Question'),
+    questionPlaceholder: pickLanguage(language, '请输入题目内容', 'Enter the question prompt'),
+    category: pickLanguage(language, '考察维度', 'Category'),
+    difficulty: pickLanguage(language, '难度', 'Difficulty'),
+    expectedPoints: pickLanguage(language, '期待候选人回答到的要点', 'Expected Talking Points'),
+    expectedPlaceholder: pickLanguage(language, '例如：问题拆解，技术取舍，量化结果', 'For example: problem breakdown, tradeoff discussion, measurable outcomes'),
+    idealAnswer: pickLanguage(language, '理想回答标准', 'Reference Answer'),
+    idealPlaceholder: pickLanguage(language, '系统评分时会参考这一段', 'This will be used as a reference during scoring'),
+    regenerate: pickLanguage(language, '重新生成 AI 草稿', 'Regenerate AI Draft'),
+    send: pickLanguage(language, '发送给当前候选人', 'Send to Candidate'),
+    sending: pickLanguage(language, '发送中...', 'Sending...'),
+    screeningSuccess: pickLanguage(language, 'AI 初筛结果和题目草稿已生成，你可以继续编辑后发送给候选人。', 'AI screening results and the question draft are ready. Review and send them to the candidate when ready.'),
+    sendSuccess: pickLanguage(language, '题目已发送给当前候选人。候选人作答并提交后，系统会自动评分并同步回招聘方。', 'The assessment was sent. Once the candidate submits answers, the system will score them and sync results back here.'),
+  }
+
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) ?? null,
     [jobs, selectedJobId]
   )
 
   const selectedCandidate = useMemo(
-    () => candidates.find((candidate) => candidate.application.id === selectedApplicationId) ?? candidates[0] ?? null,
+    () =>
+      candidates.find((candidate) => candidate.application.id === selectedApplicationId) ??
+      candidates[0] ??
+      null,
     [candidates, selectedApplicationId]
   )
 
@@ -181,8 +206,20 @@ export function RecruiterAIScreeningPanel() {
   useEffect(() => {
     if (!selectedCandidate) {
       setDraftQuestions(emptyQuestionSet())
-      setTitleDraft(buildTitle(selectedJob, null, sourceMode))
-      setGeneratedFromDraft(buildGeneratedFrom(selectedJob, null, sourceMode))
+      setTitleDraft(
+        selectedJob
+          ? sourceMode === 'manual'
+            ? `Manual Interview - ${selectedJob.title}`
+            : `AI Screening Interview - ${selectedJob.title}`
+          : 'AI Interview'
+      )
+      setGeneratedFromDraft(
+        selectedJob
+          ? sourceMode === 'manual'
+            ? `Manually prepared by the recruiter for ${selectedJob.title}.`
+            : `AI-generated from the ${selectedJob.title} requirements.`
+          : 'Prepared by the recruiter.'
+      )
       setDraftOrigin(sourceMode === 'manual' ? 'manual' : null)
       return
     }
@@ -196,8 +233,16 @@ export function RecruiterAIScreeningPanel() {
       sourceMode === 'ai' ? existingAiDraft ?? emptyQuestionSet() : emptyQuestionSet()
 
     setDraftQuestions(seededQuestions)
-    setTitleDraft(buildTitle(selectedJob, selectedCandidate, sourceMode))
-    setGeneratedFromDraft(buildGeneratedFrom(selectedJob, selectedCandidate, sourceMode))
+    setTitleDraft(
+      sourceMode === 'manual'
+        ? `Manual Interview - ${selectedJob?.title || 'Job'} - ${selectedCandidate.application.userName}`
+        : `AI Screening Interview - ${selectedJob?.title || 'Job'} - ${selectedCandidate.application.userName}`
+    )
+    setGeneratedFromDraft(
+      sourceMode === 'manual'
+        ? `Edited by the recruiter using the ${selectedJob?.title || 'selected'} role requirements and the candidate resume.`
+        : `Generated by the system from the ${selectedJob?.title || 'selected'} role requirements and the candidate resume, then refined by the recruiter.`
+    )
     setDraftOrigin(sourceMode === 'ai' ? selectedCandidate.screening?.source ?? null : 'manual')
   }, [selectedCandidate, selectedJob, sourceMode])
 
@@ -212,13 +257,13 @@ export function RecruiterAIScreeningPanel() {
       const payload = (await response.json()) as JobRecord[] | { error?: string }
 
       if (!response.ok || !Array.isArray(payload)) {
-        throw new Error(!Array.isArray(payload) && payload.error ? payload.error : '岗位加载失败。')
+        throw new Error(!Array.isArray(payload) && payload.error ? payload.error : copy.jobsFailed)
       }
 
       setJobs(payload)
       setSelectedJobId((current) => current || payload[0]?.id || '')
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '岗位加载失败。')
+      setError(loadError instanceof Error ? loadError.message : copy.jobsFailed)
     } finally {
       setLoadingJobs(false)
     }
@@ -235,33 +280,39 @@ export function RecruiterAIScreeningPanel() {
       const payload = (await response.json()) as RecruiterCandidateRecord[] | { error?: string }
 
       if (!response.ok || !Array.isArray(payload)) {
-        throw new Error(!Array.isArray(payload) && payload.error ? payload.error : '候选人加载失败。')
+        throw new Error(
+          !Array.isArray(payload) && payload.error ? payload.error : copy.candidatesFailed
+        )
       }
 
       setCandidates(payload)
       setSelectedApplicationId((current) =>
-        payload.some((candidate) => candidate.application.id === current) ? current : payload[0]?.application.id || ''
+        payload.some((candidate) => candidate.application.id === current)
+          ? current
+          : payload[0]?.application.id || ''
       )
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : '候选人加载失败。')
+      setError(loadError instanceof Error ? loadError.message : copy.candidatesFailed)
     } finally {
       setLoadingCandidates(false)
     }
   }
 
   function updateQuestion(index: number, updater: (question: AssessmentQuestion) => AssessmentQuestion) {
-    setDraftQuestions((current) => current.map((question, currentIndex) => (currentIndex === index ? updater(question) : question)))
+    setDraftQuestions((current) =>
+      current.map((question, currentIndex) => (currentIndex === index ? updater(question) : question))
+    )
   }
 
   async function generateAiDraft() {
     if (!selectedCandidate) {
-      setError('请先选择一个候选人。')
+      setError(copy.selectCandidate)
       return
     }
 
     const resumeId = activeResume?.id
     if (!resumeId) {
-      setError('当前候选人还没有可用简历，无法生成 AI 初筛。')
+      setError(copy.noResumeForScreening)
       return
     }
 
@@ -282,17 +333,17 @@ export function RecruiterAIScreeningPanel() {
       const payload = (await response.json()) as RecruiterScreeningRecord | { error?: string }
 
       if (!response.ok || !('id' in payload)) {
-        throw new Error('error' in payload && payload.error ? payload.error : 'AI 初筛生成失败。')
+        throw new Error('error' in payload && payload.error ? payload.error : copy.screeningFailed)
       }
 
       setDraftQuestions(payload.questions.map((question) => ({ ...question })))
-      setTitleDraft(`AI 初筛面试题 - ${payload.jobTitle} - ${payload.candidateName || '候选人'}`)
+      setTitleDraft(`AI Screening Interview - ${payload.jobTitle} - ${payload.candidateName || 'Candidate'}`)
       setGeneratedFromDraft(payload.generatedFrom)
       setDraftOrigin(payload.source)
       await loadCandidates(selectedJobId)
-      setMessage('AI 初筛结果和题目草稿已生成，你可以继续编辑后发送给候选人。')
+      setMessage(copy.screeningSuccess)
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : 'AI 初筛生成失败。')
+      setError(runError instanceof Error ? runError.message : copy.screeningFailed)
     } finally {
       setRunningScreening(false)
     }
@@ -300,18 +351,18 @@ export function RecruiterAIScreeningPanel() {
 
   async function sendAssessment() {
     if (!selectedCandidate) {
-      setError('请先选择一个候选人。')
+      setError(copy.selectCandidate)
       return
     }
 
     if (sourceMode === 'ai' && draftOrigin !== 'openai') {
-      setError('请先点击“生成 AI 题目草稿”，确认题目和参考答案都由 AI 生成后再发送。')
+      setError(copy.requireAiDraft)
       return
     }
 
     const resumeId = activeResume?.id
     if (!resumeId) {
-      setError('当前候选人还没有可用简历。')
+      setError(copy.noResume)
       return
     }
 
@@ -325,7 +376,7 @@ export function RecruiterAIScreeningPanel() {
       .filter((question) => question.prompt && question.idealAnswer && question.expectedPoints.length > 0)
 
     if (preparedQuestions.length < 3) {
-      setError('至少准备 3 道完整题目后才能发送。')
+      setError(copy.requireThreeQuestions)
       return
     }
 
@@ -341,8 +392,8 @@ export function RecruiterAIScreeningPanel() {
           mode: 'interview',
           applicationId: selectedCandidate.application.id,
           resumeId,
-          title: titleDraft.trim() || buildTitle(selectedJob, selectedCandidate, sourceMode),
-          generatedFrom: generatedFromDraft.trim() || buildGeneratedFrom(selectedJob, selectedCandidate, sourceMode),
+          title: titleDraft.trim() || 'AI Interview',
+          generatedFrom: generatedFromDraft.trim() || 'Prepared by the recruiter.',
           questions: preparedQuestions,
           requireAi: sourceMode === 'ai',
         }),
@@ -350,13 +401,13 @@ export function RecruiterAIScreeningPanel() {
       const payload = (await response.json()) as AssessmentRecord | { error?: string }
 
       if (!response.ok || !('id' in payload)) {
-        throw new Error('error' in payload && payload.error ? payload.error : '题目发送失败。')
+        throw new Error('error' in payload && payload.error ? payload.error : copy.sendFailed)
       }
 
       await loadCandidates(selectedJobId)
-      setMessage('题目已发送给当前候选人。候选人作答并提交后，系统会自动评分并同步回招聘方。')
+      setMessage(copy.sendSuccess)
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : '题目发送失败。')
+      setError(sendError instanceof Error ? sendError.message : copy.sendFailed)
     } finally {
       setSending(false)
     }
@@ -366,7 +417,7 @@ export function RecruiterAIScreeningPanel() {
     return (
       <div className="card flex items-center justify-center py-16">
         <Loader2 className="mr-3 h-5 w-5 animate-spin text-slate-400" />
-        <span className="text-sm text-slate-500">正在加载 AI 初筛页...</span>
+        <span className="text-sm text-slate-500">{copy.loading}</span>
       </div>
     )
   }
@@ -377,29 +428,23 @@ export function RecruiterAIScreeningPanel() {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-700">
             <Sparkles className="h-4 w-4" />
-            <span>AI 初筛与发题</span>
+            <span>{copy.title}</span>
           </div>
-          <h2 className="mt-4 text-3xl font-semibold text-slate-900">先选候选人，再决定是 AI 出题还是招聘方手动出题。</h2>
-          <p className="mt-2 text-sm leading-7 text-slate-600">
-            这里支持切换候选人、生成 AI 初筛结果、编辑题目、发送给求职者并等待系统自动评分回传。
-          </p>
+          <h2 className="mt-4 text-3xl font-semibold text-slate-900">{copy.heading}</h2>
+          <p className="mt-2 text-sm leading-7 text-slate-600">{copy.description}</p>
         </div>
         <button onClick={() => selectedJobId && void loadCandidates(selectedJobId)} className="btn-secondary flex items-center gap-2">
           <RefreshCw className="h-4 w-4" />
-          <span>刷新数据</span>
+          <span>{copy.refresh}</span>
         </button>
       </div>
 
       <div className="card">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
           <label className="block">
-            <p className="mb-2 text-sm font-medium text-slate-900">选择岗位</p>
-            <select
-              value={selectedJobId}
-              onChange={(event) => setSelectedJobId(event.target.value)}
-              className="input-field"
-            >
-              {jobs.length === 0 && <option value="">暂无岗位</option>}
+            <p className="mb-2 text-sm font-medium text-slate-900">{copy.selectJob}</p>
+            <select value={selectedJobId} onChange={(event) => setSelectedJobId(event.target.value)} className="input-field">
+              {jobs.length === 0 && <option value="">{copy.noJobs}</option>}
               {jobs.map((job) => (
                 <option key={job.id} value={job.id}>
                   {job.title} · {job.company}
@@ -409,17 +454,17 @@ export function RecruiterAIScreeningPanel() {
           </label>
 
           <label className="block">
-            <p className="mb-2 text-sm font-medium text-slate-900">选择候选人</p>
+            <p className="mb-2 text-sm font-medium text-slate-900">{copy.selectCandidateLabel}</p>
             <select
               value={selectedCandidate?.application.id ?? ''}
               onChange={(event) => setSelectedApplicationId(event.target.value)}
               className="input-field"
               disabled={loadingCandidates || candidates.length === 0}
             >
-              {candidates.length === 0 && <option value="">当前岗位暂无候选人</option>}
+              {candidates.length === 0 && <option value="">{copy.noCandidates}</option>}
               {candidates.map((candidate) => (
                 <option key={candidate.application.id} value={candidate.application.id}>
-                  {candidate.application.userName} · {(candidate.selectedResume ?? candidate.availableResumes[0])?.score ?? 0} 分
+                  {candidate.application.userName} · {(candidate.selectedResume ?? candidate.availableResumes[0])?.score ?? 0}
                 </option>
               ))}
             </select>
@@ -445,11 +490,11 @@ export function RecruiterAIScreeningPanel() {
       {loadingCandidates ? (
         <div className="card flex items-center justify-center py-16">
           <Loader2 className="mr-3 h-5 w-5 animate-spin text-slate-400" />
-          <span className="text-sm text-slate-500">正在加载候选人数据...</span>
+          <span className="text-sm text-slate-500">{copy.loadingCandidates}</span>
         </div>
       ) : !selectedCandidate ? (
         <div className="rounded-2xl border border-dashed border-slate-300 px-6 py-12 text-center text-sm text-slate-500">
-          当前岗位还没有投递候选人，暂时无法发题。
+          {copy.emptyCandidates}
         </div>
       ) : (
         <>
@@ -468,19 +513,19 @@ export function RecruiterAIScreeningPanel() {
 
                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-500">当前简历</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900">{activeResume?.fileName || '未关联'}</p>
-                    <p className="mt-1 text-xs text-slate-500">简历评分 {activeResume?.score ?? 0} 分</p>
+                    <p className="text-xs text-slate-500">{copy.currentResume}</p>
+                    <p className="mt-2 text-sm font-medium text-slate-900">{activeResume?.fileName || copy.notLinked}</p>
+                    <p className="mt-1 text-xs text-slate-500">{copy.resumeScore} {activeResume?.score ?? 0}</p>
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-xs text-slate-500">岗位</p>
-                    <p className="mt-2 text-sm font-medium text-slate-900">{selectedJob?.title || '未选择岗位'}</p>
+                    <p className="text-xs text-slate-500">{copy.job}</p>
+                    <p className="mt-2 text-sm font-medium text-slate-900">{selectedJob?.title || copy.noJobSelected}</p>
                     <p className="mt-1 text-xs text-slate-500">{selectedJob?.company || ''}</p>
                   </div>
                 </div>
 
                 <p className="mt-4 text-sm leading-7 text-slate-600">
-                  {activeResume?.summary || '当前简历还没有摘要。'}
+                  {activeResume?.summary || copy.noSummary}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(activeResume?.profile.skills ?? []).slice(0, 8).map((skill) => (
@@ -492,50 +537,50 @@ export function RecruiterAIScreeningPanel() {
               <div className="card">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-900">AI 初筛结果</h3>
-                    <p className="mt-1 text-sm text-slate-500">可先跑 AI 初筛，再把生成的题目继续编辑后发送。</p>
+                    <h3 className="text-lg font-semibold text-slate-900">{copy.screening}</h3>
+                    <p className="mt-1 text-sm text-slate-500">{copy.screeningHint}</p>
                   </div>
                   <button onClick={() => void generateAiDraft()} className="btn-secondary flex items-center gap-2" disabled={runningScreening}>
                     {runningScreening ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    <span>{runningScreening ? '生成中...' : '生成 AI 题目草稿'}</span>
+                    <span>{runningScreening ? copy.generating : copy.generateDraft}</span>
                   </button>
                 </div>
                 {sourceMode === 'ai' && draftOrigin !== 'openai' && (
                   <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
-                    当前还没有 AI 题目草稿。请先生成一次，系统会同时产出题目和参考答案。
+                    {copy.noDraftYet}
                   </div>
                 )}
 
                 <div className="mt-4 space-y-3">
                   <div className="rounded-2xl bg-slate-50 p-4">
-                    <p className="text-sm font-medium text-slate-900">初筛结论</p>
+                    <p className="text-sm font-medium text-slate-900">{copy.summary}</p>
                     <p className="mt-2 text-sm leading-7 text-slate-600">
-                      {selectedCandidate.screening?.summary || '还没有生成 AI 初筛结果。'}
+                      {selectedCandidate.screening?.summary || copy.noScreening}
                     </p>
                   </div>
 
                   {selectedCandidate.screening && (
                     <details className="rounded-2xl bg-slate-50 p-4">
                       <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-medium text-slate-900">
-                        展开查看分数、风险和追问点
+                        {copy.expandScores}
                         <ChevronDown className="h-4 w-4 text-slate-400" />
                       </summary>
                       <div className="mt-4 space-y-4 text-sm text-slate-600">
                         <div className="grid grid-cols-2 gap-3">
                           <div className="rounded-2xl bg-white p-3">
-                            <p className="text-xs text-slate-500">综合得分</p>
+                            <p className="text-xs text-slate-500">{copy.overallScore}</p>
                             <p className="mt-2 text-xl font-semibold text-slate-900">{selectedCandidate.screening.overallScore}</p>
                           </div>
                           <div className="rounded-2xl bg-white p-3">
-                            <p className="text-xs text-slate-500">结论</p>
+                            <p className="text-xs text-slate-500">{copy.recommendation}</p>
                             <p className="mt-2 text-xl font-semibold text-slate-900">
-                              {recommendationLabel(selectedCandidate.screening.recommendation)}
+                              {recruiterRecommendationLabel(selectedCandidate.screening.recommendation, language)}
                             </p>
                           </div>
                         </div>
 
                         <div>
-                          <p className="font-medium text-slate-900">重点追问</p>
+                          <p className="font-medium text-slate-900">{copy.focus}</p>
                           <ul className="mt-2 space-y-2">
                             {selectedCandidate.screening.interviewFocus.map((item) => (
                               <li key={item}>- {item}</li>
@@ -544,10 +589,10 @@ export function RecruiterAIScreeningPanel() {
                         </div>
 
                         <div>
-                          <p className="font-medium text-slate-900">风险项</p>
+                          <p className="font-medium text-slate-900">{copy.risks}</p>
                           <ul className="mt-2 space-y-2">
                             {selectedCandidate.screening.risks.length === 0 ? (
-                              <li>当前未发现明显风险项。</li>
+                              <li>{copy.noRisks}</li>
                             ) : (
                               selectedCandidate.screening.risks.map((item) => <li key={item}>- {item}</li>)
                             )}
@@ -560,33 +605,36 @@ export function RecruiterAIScreeningPanel() {
               </div>
 
               <div className="card">
-                <h3 className="text-lg font-semibold text-slate-900">最近一次候选人测评状态</h3>
+                <h3 className="text-lg font-semibold text-slate-900">{copy.latestAssessment}</h3>
                 <div className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
                   {selectedCandidate.latestAssessment ? (
                     selectedCandidate.latestAssessment.status === 'scored' ? (
                       <>
                         <p className="font-medium text-slate-900">
-                          {selectedCandidate.latestAssessment.summary.overallScore ?? '待评分'} 分 ·{' '}
-                          {recommendationLabel(selectedCandidate.latestAssessment.summary.recommendation)}
+                          {selectedCandidate.latestAssessment.summary.overallScore ?? copy.pendingScore} ·{' '}
+                          {recruiterRecommendationLabel(
+                            selectedCandidate.latestAssessment.summary.recommendation,
+                            language
+                          )}
                         </p>
                         <p className="mt-2 leading-7">{selectedCandidate.latestAssessment.summary.summary}</p>
                       </>
                     ) : (
                       <>
                         <p className="font-medium text-slate-900">
-                          当前状态：{assessmentStatusLabel(selectedCandidate.latestAssessment.status)}
+                          {assessmentStatusLabel(selectedCandidate.latestAssessment.status, language)}
                         </p>
                         <p className="mt-2 leading-7">
                           {selectedCandidate.latestAssessment.status === 'draft'
-                            ? '题目已经发送给候选人，正在等待候选人开始作答。'
+                            ? copy.assessmentDraft
                             : selectedCandidate.latestAssessment.status === 'in_progress'
-                              ? '候选人正在作答，提交后系统会自动评分并回传给招聘方。'
-                              : '候选人已经提交答案，系统正在完成评分，请稍后刷新查看。'}
+                              ? copy.assessmentProgress
+                              : copy.assessmentSubmitted}
                         </p>
                       </>
                     )
                   ) : (
-                    <p>当前候选人还没有返回作答结果。</p>
+                    <p>{copy.noAssessment}</p>
                   )}
                 </div>
               </div>
@@ -595,32 +643,36 @@ export function RecruiterAIScreeningPanel() {
             <div className="card">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <h3 className="text-xl font-semibold text-slate-900">发题设置</h3>
-                  <p className="mt-1 text-sm text-slate-500">可以直接使用 AI 草稿，也可以完全手动编辑题目。</p>
+                  <h3 className="text-xl font-semibold text-slate-900">{copy.settings}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{copy.settingsHint}</p>
                 </div>
                 <div className="flex rounded-2xl bg-slate-100 p-1">
                   <button
                     onClick={() => setSourceMode('ai')}
-                    className={`rounded-2xl px-4 py-2 text-sm font-medium ${sourceMode === 'ai' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600'}`}
+                    className={`rounded-2xl px-4 py-2 text-sm font-medium ${
+                      sourceMode === 'ai' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600'
+                    }`}
                   >
-                    AI 出题
+                    {copy.aiMode}
                   </button>
                   <button
                     onClick={() => setSourceMode('manual')}
-                    className={`rounded-2xl px-4 py-2 text-sm font-medium ${sourceMode === 'manual' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600'}`}
+                    className={`rounded-2xl px-4 py-2 text-sm font-medium ${
+                      sourceMode === 'manual' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-600'
+                    }`}
                   >
-                    手动出题
+                    {copy.manualMode}
                   </button>
                 </div>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <label className="block">
-                  <p className="mb-2 text-sm font-medium text-slate-900">题目标题</p>
+                  <p className="mb-2 text-sm font-medium text-slate-900">{copy.assessmentTitle}</p>
                   <input value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} className="input-field" />
                 </label>
                 <label className="block">
-                  <p className="mb-2 text-sm font-medium text-slate-900">题目说明</p>
+                  <p className="mb-2 text-sm font-medium text-slate-900">{copy.assessmentDescription}</p>
                   <input value={generatedFromDraft} onChange={(event) => setGeneratedFromDraft(event.target.value)} className="input-field" />
                 </label>
               </div>
@@ -630,7 +682,9 @@ export function RecruiterAIScreeningPanel() {
                   <div key={question.id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className="block md:col-span-2">
-                        <p className="mb-2 text-sm font-medium text-slate-900">第 {index + 1} 题</p>
+                        <p className="mb-2 text-sm font-medium text-slate-900">
+                          {language === 'en' ? `${copy.questionLabel} ${index + 1}` : `${copy.questionLabel} ${index + 1} 题`}
+                        </p>
                         <textarea
                           value={question.prompt}
                           onChange={(event) =>
@@ -641,12 +695,12 @@ export function RecruiterAIScreeningPanel() {
                           }
                           rows={3}
                           className="input-field"
-                          placeholder="请输入题目内容"
+                          placeholder={copy.questionPlaceholder}
                         />
                       </label>
 
                       <label className="block">
-                        <p className="mb-2 text-sm font-medium text-slate-900">考察维度</p>
+                        <p className="mb-2 text-sm font-medium text-slate-900">{copy.category}</p>
                         <select
                           value={question.category}
                           onChange={(event) =>
@@ -657,16 +711,16 @@ export function RecruiterAIScreeningPanel() {
                           }
                           className="input-field"
                         >
-                          <option value="technical">{categoryLabel('technical')}</option>
-                          <option value="problem_solving">{categoryLabel('problem_solving')}</option>
-                          <option value="behavioral">{categoryLabel('behavioral')}</option>
-                          <option value="communication">{categoryLabel('communication')}</option>
-                          <option value="role_fit">{categoryLabel('role_fit')}</option>
+                          <option value="technical">{assessmentCategoryLabel('technical', language)}</option>
+                          <option value="problem_solving">{assessmentCategoryLabel('problem_solving', language)}</option>
+                          <option value="behavioral">{assessmentCategoryLabel('behavioral', language)}</option>
+                          <option value="communication">{assessmentCategoryLabel('communication', language)}</option>
+                          <option value="role_fit">{assessmentCategoryLabel('role_fit', language)}</option>
                         </select>
                       </label>
 
                       <label className="block">
-                        <p className="mb-2 text-sm font-medium text-slate-900">难度</p>
+                        <p className="mb-2 text-sm font-medium text-slate-900">{copy.difficulty}</p>
                         <select
                           value={question.difficulty}
                           onChange={(event) =>
@@ -677,16 +731,16 @@ export function RecruiterAIScreeningPanel() {
                           }
                           className="input-field"
                         >
-                          <option value="easy">简单</option>
-                          <option value="medium">中等</option>
-                          <option value="hard">困难</option>
+                          <option value="easy">{assessmentDifficultyLabel('easy', language)}</option>
+                          <option value="medium">{assessmentDifficultyLabel('medium', language)}</option>
+                          <option value="hard">{assessmentDifficultyLabel('hard', language)}</option>
                         </select>
                       </label>
 
                       <label className="block">
-                        <p className="mb-2 text-sm font-medium text-slate-900">期待候选人回答到的要点</p>
+                        <p className="mb-2 text-sm font-medium text-slate-900">{copy.expectedPoints}</p>
                         <textarea
-                          value={question.expectedPoints.join('，')}
+                          value={question.expectedPoints.join(language === 'en' ? ', ' : '，')}
                           onChange={(event) =>
                             updateQuestion(index, (current) => ({
                               ...current,
@@ -695,12 +749,12 @@ export function RecruiterAIScreeningPanel() {
                           }
                           rows={3}
                           className="input-field"
-                          placeholder="例如：问题拆解，技术取舍，量化结果"
+                          placeholder={copy.expectedPlaceholder}
                         />
                       </label>
 
                       <label className="block">
-                        <p className="mb-2 text-sm font-medium text-slate-900">理想回答标准</p>
+                        <p className="mb-2 text-sm font-medium text-slate-900">{copy.idealAnswer}</p>
                         <textarea
                           value={question.idealAnswer}
                           onChange={(event) =>
@@ -711,7 +765,7 @@ export function RecruiterAIScreeningPanel() {
                           }
                           rows={3}
                           className="input-field"
-                          placeholder="系统评分时会参考这一段"
+                          placeholder={copy.idealPlaceholder}
                         />
                       </label>
                     </div>
@@ -723,12 +777,12 @@ export function RecruiterAIScreeningPanel() {
                 {sourceMode === 'ai' && (
                   <button onClick={() => void generateAiDraft()} className="btn-secondary flex items-center gap-2" disabled={runningScreening}>
                     {runningScreening ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    <span>{runningScreening ? '生成中...' : '重新生成 AI 草稿'}</span>
+                    <span>{runningScreening ? copy.generating : copy.regenerate}</span>
                   </button>
                 )}
                 <button onClick={() => void sendAssessment()} className="btn-primary flex items-center gap-2" disabled={sending}>
                   {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  <span>{sending ? '发送中...' : '发送给当前候选人'}</span>
+                  <span>{sending ? copy.sending : copy.send}</span>
                 </button>
               </div>
             </div>

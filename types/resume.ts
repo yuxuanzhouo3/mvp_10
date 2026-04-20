@@ -1,7 +1,7 @@
 export type ResumeInsightType = 'strength' | 'improvement' | 'warning'
 export type ResumeInsightPriority = 'high' | 'medium' | 'low'
 export type ResumeAnalysisSource = 'heuristic' | 'openai'
-export type ResumeStorageProvider = 'local' | 'cloudbase'
+export type ResumeStorageProvider = 'local' | 'cloudbase' | 'supabase'
 export type CandidateStage = 'new' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected'
 export type CandidateReviewStatus = 'pending' | 'reviewed'
 export type CandidateOutreachStatus = 'pending' | 'ready' | 'contacted' | 'responded'

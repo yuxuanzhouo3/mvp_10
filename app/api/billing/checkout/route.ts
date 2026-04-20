@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 
 import { NextResponse } from 'next/server'
 
+import { isWechatPayEnabled } from '@/lib/app-version'
 import { requireAuthenticatedUser } from '@/lib/server/auth-helpers'
 import { createCheckoutSession, getPaymentPlan } from '@/lib/server/billing-store'
 import {
@@ -42,6 +43,13 @@ export async function POST(request: Request) {
     }
 
     if (paymentMethod === 'wechat') {
+      if (!isWechatPayEnabled()) {
+        return NextResponse.json(
+          { error: 'WeChat Pay is only available in the CN edition.' },
+          { status: 400 }
+        )
+      }
+
       const outTradeNo = generateWechatOutTradeNo(randomUUID())
       const isMock = !getWechatPayConfig()
       const codeUrl = isMock

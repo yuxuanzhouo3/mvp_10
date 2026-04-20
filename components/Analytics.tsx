@@ -24,7 +24,14 @@ import {
   YAxis,
 } from 'recharts'
 
+import {
+  applicationStageLabel,
+  assessmentRecommendationLabel,
+  pickLanguage,
+  relativeTimeLabel,
+} from '@/lib/i18n'
 import { getStoredAuthToken } from './AuthProvider'
+import { useLanguage } from './LanguageProvider'
 import type { ApplicationRecord, ApplicationStage } from '@/types/application'
 import type { AssessmentRecord } from '@/types/assessment'
 
@@ -44,7 +51,7 @@ const TIME_RANGE_MONTHS: Record<TimeRange, number> = {
 function authHeaders() {
   const token = getStoredAuthToken()
   if (!token) {
-    throw new Error('请先重新登录。')
+    throw new Error('Please sign in again.')
   }
 
   return {
@@ -60,74 +67,36 @@ function addMonths(date: Date, months: number) {
   return new Date(date.getFullYear(), date.getMonth() + months, 1)
 }
 
-function shortMonth(date: Date) {
-  return date.toLocaleDateString('zh-CN', { month: 'short' })
+function shortMonth(date: Date, language: 'zh' | 'en') {
+  return date.toLocaleDateString(language === 'en' ? 'en-US' : 'zh-CN', {
+    month: 'short',
+  })
 }
 
 function assessmentTimestamp(record: AssessmentRecord) {
   return record.summary.completedAt ?? record.updatedAt
 }
 
-function relativeTime(value: string) {
-  const diff = Date.now() - new Date(value).getTime()
-  const hours = Math.floor(diff / (1000 * 60 * 60))
-
-  if (hours < 1) return '刚刚'
-  if (hours < 24) return `${hours} 小时前`
-
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days} 天前`
-
-  const months = Math.floor(days / 30)
-  return `${months} 个月前`
-}
-
-function stageLabel(stage: ApplicationStage) {
-  switch (stage) {
-    case 'applied':
-      return '已投递'
-    case 'screening':
-      return '初筛中'
-    case 'interview':
-      return '面试中'
-    case 'offer':
-      return 'Offer 阶段'
-    case 'hired':
-      return '已录用'
-    case 'rejected':
-      return '未通过'
-    case 'withdrawn':
-      return '已撤回'
-    default:
-      return stage
-  }
-}
-
-function recommendationLabel(value: AssessmentRecord['summary']['recommendation']) {
-  switch (value) {
-    case 'strong_yes':
-      return '强烈推荐'
-    case 'yes':
-      return '推荐'
-    case 'hold':
-      return '待复核'
-    case 'no':
-      return '不推荐'
-    default:
-      return '待评估'
-  }
-}
-
-function activityLabel(item: ActivityItem) {
+function activityLabel(item: ActivityItem, language: 'zh' | 'en') {
   if (item.kind === 'assessment') {
     const record = item.payload
-    const sourceLabel = record.kind === 'practice' ? '岗位自测' : '招聘方发题'
-    const actionLabel = record.status === 'scored' ? '已完成评分' : '已生成题目'
-    return `${sourceLabel}：${record.jobTitle || record.title} ${actionLabel}`
+    const sourceLabel =
+      record.kind === 'practice'
+        ? pickLanguage(language, '岗位自测', 'Practice Interview')
+        : pickLanguage(language, '招聘方发题', 'Recruiter Assignment')
+    const actionLabel =
+      record.status === 'scored'
+        ? pickLanguage(language, '已完成评分', 'Scored')
+        : pickLanguage(language, '已生成题目', 'Created')
+    return language === 'en'
+      ? `${sourceLabel}: ${record.jobTitle || record.title} ${actionLabel}`
+      : `${sourceLabel}：${record.jobTitle || record.title} ${actionLabel}`
   }
 
   const record = item.payload
-  return `${record.company} · ${record.jobTitle} 当前状态：${stageLabel(record.stage)}`
+  return language === 'en'
+    ? `${record.company} · ${record.jobTitle} · ${applicationStageLabel(record.stage, language)}`
+    : `${record.company} · ${record.jobTitle} 当前状态：${applicationStageLabel(record.stage, language)}`
 }
 
 function averageScore(records: AssessmentRecord[]) {
@@ -146,11 +115,53 @@ function isInterviewProgress(stage: ApplicationStage) {
 }
 
 export function Analytics() {
+  const { language } = useLanguage()
   const [timeRange, setTimeRange] = useState<TimeRange>('6m')
   const [applications, setApplications] = useState<ApplicationRecord[]>([])
   const [assessments, setAssessments] = useState<AssessmentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const copy = {
+    applicationLoadFailed: pickLanguage(language, '投递分析加载失败。', 'Failed to load application analytics.'),
+    assessmentLoadFailed: pickLanguage(language, '测评分数加载失败。', 'Failed to load assessment scores.'),
+    loadFailed: pickLanguage(language, '分析数据加载失败。', 'Failed to load analytics.'),
+    targetCompany: pickLanguage(language, '目标公司', 'Target Company'),
+    loading: pickLanguage(language, '正在加载分析数据...', 'Loading analytics...'),
+    title: pickLanguage(language, '求职分析', 'Analytics'),
+    heading: pickLanguage(
+      language,
+      '把投递、自测和招聘方正式题目的结果放在一起看。',
+      'View applications, practice interviews, and recruiter assignments together.'
+    ),
+    description: pickLanguage(
+      language,
+      '这里重点看两个问题：你做的岗位自测分数如何，和招聘方真正发来的题目相比有没有差距。',
+      'Focus on two questions here: how your practice scores are trending, and how they compare with real recruiter-assigned assessments.'
+    ),
+    appliedJobs: pickLanguage(language, '投递岗位', 'Applications'),
+    interviews: pickLanguage(language, '进入面试相关阶段', 'Interview Pipeline'),
+    practiceAverage: pickLanguage(language, '岗位自测平均分', 'Practice Avg'),
+    recruiterAverage: pickLanguage(language, '招聘方正式题平均分', 'Assigned Avg'),
+    scoreTrend: pickLanguage(language, '分数趋势对比', 'Score Trends'),
+    pipelineTrend: pickLanguage(language, '投递与推进趋势', 'Application Trends'),
+    compareTitle: pickLanguage(language, '同岗位：自测 vs 招聘方题目', 'Same Role: Practice vs Recruiter'),
+    compareEmpty: pickLanguage(
+      language,
+      '还没有可直接对照的岗位。先做一次岗位自测，或者先收到招聘方发来的正式题目。',
+      'No role has both practice and recruiter data yet. Complete one of each to compare them here.'
+    ),
+    practiceLabel: pickLanguage(language, '岗位自测', 'Practice'),
+    recruiterLabel: pickLanguage(language, '招聘方题目', 'Assigned'),
+    pipelineBreakdown: pickLanguage(language, '投递流程分布', 'Pipeline Breakdown'),
+    quantity: pickLanguage(language, '数量', 'Count'),
+    activity: pickLanguage(language, '最近动态', 'Recent Activity'),
+    activityEmpty: pickLanguage(language, '最近还没有新的投递或测评动态。', 'No recent application or assessment activity.'),
+    practiceLegend: pickLanguage(language, '岗位自测平均分', 'Practice Avg'),
+    recruiterLegend: pickLanguage(language, '招聘方题目平均分', 'Assigned Avg'),
+    applicationsLegend: pickLanguage(language, '投递数', 'Applications'),
+    interviewsLegend: pickLanguage(language, '进入面试相关阶段', 'Interview Stages'),
+  }
 
   useEffect(() => {
     async function loadAnalyticsData() {
@@ -174,27 +185,31 @@ export function Analytics() {
 
         if (!applicationResponse.ok || !Array.isArray(applicationData)) {
           throw new Error(
-            !Array.isArray(applicationData) && applicationData.error ? applicationData.error : '投递分析加载失败。'
+            !Array.isArray(applicationData) && applicationData.error
+              ? applicationData.error
+              : copy.applicationLoadFailed
           )
         }
 
         if (!assessmentResponse.ok || !Array.isArray(assessmentData)) {
           throw new Error(
-            !Array.isArray(assessmentData) && assessmentData.error ? assessmentData.error : '测评分数加载失败。'
+            !Array.isArray(assessmentData) && assessmentData.error
+              ? assessmentData.error
+              : copy.assessmentLoadFailed
           )
         }
 
         setApplications(applicationData)
         setAssessments(assessmentData)
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : '分析数据加载失败。')
+        setError(loadError instanceof Error ? loadError.message : copy.loadFailed)
       } finally {
         setLoading(false)
       }
     }
 
     void loadAnalyticsData()
-  }, [])
+  }, [copy.applicationLoadFailed, copy.assessmentLoadFailed, copy.loadFailed])
 
   const analytics = useMemo(() => {
     const monthCount = TIME_RANGE_MONTHS[timeRange]
@@ -227,7 +242,7 @@ export function Analytics() {
       if (!comparisonMap.has(key)) {
         comparisonMap.set(key, {
           jobTitle: record.jobTitle || record.title,
-          company: record.company || '目标公司',
+          company: record.company || copy.targetCompany,
           practiceScore: record.summary.overallScore,
           recruiterScore: null,
         })
@@ -272,7 +287,7 @@ export function Analytics() {
       })
 
       return {
-        month: shortMonth(monthDate),
+        month: shortMonth(monthDate, language),
         applications: monthApplications.length,
         interviews: monthApplications.filter((item) => isInterviewProgress(item.stage)).length,
         practiceAvg: averageScore(monthPractice),
@@ -280,8 +295,16 @@ export function Analytics() {
       }
     })
 
-    const pipelineBreakdown = ['applied', 'screening', 'interview', 'offer', 'hired', 'rejected', 'withdrawn'].map((stage) => ({
-      stage: stageLabel(stage as ApplicationStage),
+    const pipelineBreakdown = [
+      'applied',
+      'screening',
+      'interview',
+      'offer',
+      'hired',
+      'rejected',
+      'withdrawn',
+    ].map((stage) => ({
+      stage: applicationStageLabel(stage as ApplicationStage, language),
       count: inCurrentApplications.filter((item) => item.stage === stage).length,
     }))
 
@@ -308,19 +331,17 @@ export function Analytics() {
       practiceAverage: averageScore(scoredPractice),
       recruiterAverage: averageScore(scoredRecruiter),
       linkedComparisons,
-      practiceCount: practiceAssessments.length,
-      recruiterCount: recruiterAssessments.length,
       trendBuckets,
       pipelineBreakdown,
       recentActivity,
     }
-  }, [applications, assessments, timeRange])
+  }, [applications, assessments, copy.targetCompany, language, timeRange])
 
   if (loading) {
     return (
       <div className="card flex items-center justify-center py-16">
         <Loader2 className="mr-3 h-5 w-5 animate-spin text-slate-400" />
-        <span className="text-sm text-slate-500">正在加载分析数据...</span>
+        <span className="text-sm text-slate-500">{copy.loading}</span>
       </div>
     )
   }
@@ -331,18 +352,16 @@ export function Analytics() {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-700">
             <BarChart3 className="h-4 w-4" />
-            <span>求职分析</span>
+            <span>{copy.title}</span>
           </div>
-          <h2 className="mt-4 text-3xl font-semibold text-slate-900">把投递、自测和招聘方正式题目的结果放在一起看。</h2>
-          <p className="mt-2 text-sm leading-7 text-slate-600">
-            这里重点看两个问题：你做的岗位自测分数如何，和招聘方真正发来的题目相比有没有差距。
-          </p>
+          <h2 className="mt-4 text-3xl font-semibold text-slate-900">{copy.heading}</h2>
+          <p className="mt-2 text-sm leading-7 text-slate-600">{copy.description}</p>
         </div>
         <select value={timeRange} onChange={(event) => setTimeRange(event.target.value as TimeRange)} className="input-field w-full lg:w-52">
-          <option value="1m">最近 1 个月</option>
-          <option value="3m">最近 3 个月</option>
-          <option value="6m">最近 6 个月</option>
-          <option value="1y">最近 1 年</option>
+          <option value="1m">{pickLanguage(language, '最近 1 个月', 'Last 1 Month')}</option>
+          <option value="3m">{pickLanguage(language, '最近 3 个月', 'Last 3 Months')}</option>
+          <option value="6m">{pickLanguage(language, '最近 6 个月', 'Last 6 Months')}</option>
+          <option value="1y">{pickLanguage(language, '最近 1 年', 'Last 1 Year')}</option>
         </select>
       </div>
 
@@ -362,7 +381,7 @@ export function Analytics() {
               <Briefcase className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-slate-500">投递岗位</p>
+              <p className="text-sm text-slate-500">{copy.appliedJobs}</p>
               <p className="mt-1 text-2xl font-semibold text-slate-900">{analytics.totalApplications}</p>
             </div>
           </div>
@@ -373,7 +392,7 @@ export function Analytics() {
               <Target className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-slate-500">进入面试相关阶段</p>
+              <p className="text-sm text-slate-500">{copy.interviews}</p>
               <p className="mt-1 text-2xl font-semibold text-slate-900">{analytics.interviewProgress}</p>
             </div>
           </div>
@@ -384,7 +403,7 @@ export function Analytics() {
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-slate-500">岗位自测平均分</p>
+              <p className="text-sm text-slate-500">{copy.practiceAverage}</p>
               <p className="mt-1 text-2xl font-semibold text-slate-900">{analytics.practiceAverage}</p>
             </div>
           </div>
@@ -395,7 +414,7 @@ export function Analytics() {
               <TrendingUp className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-sm text-slate-500">招聘方正式题平均分</p>
+              <p className="text-sm text-slate-500">{copy.recruiterAverage}</p>
               <p className="mt-1 text-2xl font-semibold text-slate-900">{analytics.recruiterAverage}</p>
             </div>
           </div>
@@ -404,7 +423,7 @@ export function Analytics() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="card">
-          <h3 className="mb-4 text-lg font-semibold text-slate-900">分数趋势对比</h3>
+          <h3 className="mb-4 text-lg font-semibold text-slate-900">{copy.scoreTrend}</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={analytics.trendBuckets}>
@@ -413,15 +432,15 @@ export function Analytics() {
                 <YAxis allowDecimals={false} />
                 <Tooltip />
                 <Legend />
-                <Line type="monotone" dataKey="practiceAvg" stroke="#8b5cf6" strokeWidth={2} name="岗位自测平均分" />
-                <Line type="monotone" dataKey="recruiterAvg" stroke="#0ea5e9" strokeWidth={2} name="招聘方题目平均分" />
+                <Line type="monotone" dataKey="practiceAvg" stroke="#8b5cf6" strokeWidth={2} name={copy.practiceLegend} />
+                <Line type="monotone" dataKey="recruiterAvg" stroke="#0ea5e9" strokeWidth={2} name={copy.recruiterLegend} />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         <div className="card">
-          <h3 className="mb-4 text-lg font-semibold text-slate-900">投递与推进趋势</h3>
+          <h3 className="mb-4 text-lg font-semibold text-slate-900">{copy.pipelineTrend}</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={analytics.trendBuckets}>
@@ -430,8 +449,8 @@ export function Analytics() {
                 <YAxis allowDecimals={false} />
                 <Tooltip />
                 <Legend />
-                <Bar dataKey="applications" fill="#3b82f6" radius={[6, 6, 0, 0]} name="投递数" />
-                <Bar dataKey="interviews" fill="#10b981" radius={[6, 6, 0, 0]} name="进入面试相关阶段" />
+                <Bar dataKey="applications" fill="#3b82f6" radius={[6, 6, 0, 0]} name={copy.applicationsLegend} />
+                <Bar dataKey="interviews" fill="#10b981" radius={[6, 6, 0, 0]} name={copy.interviewsLegend} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -440,12 +459,10 @@ export function Analytics() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="card">
-          <h3 className="mb-4 text-lg font-semibold text-slate-900">同岗位：自测 vs 招聘方题目</h3>
+          <h3 className="mb-4 text-lg font-semibold text-slate-900">{copy.compareTitle}</h3>
           <div className="space-y-3">
             {analytics.linkedComparisons.length === 0 && (
-              <p className="text-sm text-slate-500">
-                还没有可直接对照的岗位。先做一次岗位自测，或者先收到招聘方发来的正式题目。
-              </p>
+              <p className="text-sm text-slate-500">{copy.compareEmpty}</p>
             )}
             {analytics.linkedComparisons.map((item) => (
               <div key={`${item.company}-${item.jobTitle}`} className="rounded-2xl border border-slate-200 p-4">
@@ -460,11 +477,11 @@ export function Analytics() {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div className="rounded-2xl bg-slate-50 p-3">
-                    <p className="text-xs text-slate-500">岗位自测</p>
+                    <p className="text-xs text-slate-500">{copy.practiceLabel}</p>
                     <p className="mt-2 text-lg font-semibold text-slate-900">{item.practiceScore}</p>
                   </div>
                   <div className="rounded-2xl bg-slate-50 p-3">
-                    <p className="text-xs text-slate-500">招聘方题目</p>
+                    <p className="text-xs text-slate-500">{copy.recruiterLabel}</p>
                     <p className="mt-2 text-lg font-semibold text-slate-900">{item.recruiterScore}</p>
                   </div>
                 </div>
@@ -474,7 +491,7 @@ export function Analytics() {
         </div>
 
         <div className="card">
-          <h3 className="mb-4 text-lg font-semibold text-slate-900">投递流程分布</h3>
+          <h3 className="mb-4 text-lg font-semibold text-slate-900">{copy.pipelineBreakdown}</h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={analytics.pipelineBreakdown}>
@@ -482,7 +499,7 @@ export function Analytics() {
                 <XAxis dataKey="stage" />
                 <YAxis allowDecimals={false} />
                 <Tooltip />
-                <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} name="数量" />
+                <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} name={copy.quantity} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -492,22 +509,27 @@ export function Analytics() {
       <div className="card">
         <div className="mb-4 flex items-center gap-2">
           <Calendar className="h-5 w-5 text-primary-600" />
-          <h3 className="text-lg font-semibold text-slate-900">最近动态</h3>
+          <h3 className="text-lg font-semibold text-slate-900">{copy.activity}</h3>
         </div>
         <div className="space-y-3">
           {analytics.recentActivity.length === 0 && (
-            <p className="text-sm text-slate-500">最近还没有新的投递或测评动态。</p>
+            <p className="text-sm text-slate-500">{copy.activityEmpty}</p>
           )}
           {analytics.recentActivity.map((item) => (
             <div key={item.id} className="flex items-start gap-3">
-              <div className={`mt-2 h-2.5 w-2.5 rounded-full ${item.kind === 'assessment' ? 'bg-violet-500' : 'bg-blue-500'}`}></div>
+              <div
+                className={`mt-2 h-2.5 w-2.5 rounded-full ${
+                  item.kind === 'assessment' ? 'bg-violet-500' : 'bg-blue-500'
+                }`}
+              />
               <div className="flex-1">
-                <p className="text-sm text-slate-900">{activityLabel(item)}</p>
-                <p className="mt-1 text-xs text-slate-500">{relativeTime(item.at)}</p>
+                <p className="text-sm text-slate-900">{activityLabel(item, language)}</p>
+                <p className="mt-1 text-xs text-slate-500">{relativeTimeLabel(item.at, language)}</p>
               </div>
               {item.kind === 'assessment' && item.payload.summary.overallScore !== null && (
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
-                  {item.payload.summary.overallScore} 分 · {recommendationLabel(item.payload.summary.recommendation)}
+                  {item.payload.summary.overallScore} ·{' '}
+                  {assessmentRecommendationLabel(item.payload.summary.recommendation, language)}
                 </span>
               )}
             </div>

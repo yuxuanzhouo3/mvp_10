@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  env: {
+    NEXT_PUBLIC_CN: process.env.CN ?? '1',
+  },
   images: {
     domains: ['localhost'],
   },

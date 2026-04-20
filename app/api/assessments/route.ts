@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { assertAiAccess, getAiAccessErrorStatus, isAiAccessErrorMessage, recordAiUsage } from '@/lib/server/ai-access'
 import { getApplicationById, updateApplication } from '@/lib/server/application-store'
 import {
   isAuthErrorMessage,
@@ -21,6 +22,7 @@ import type {
   AssessmentRecord,
   AssessmentStatus,
 } from '@/types/assessment'
+import type { AiAccessMode } from '@/types/ai'
 import type { AppUser } from '@/types/auth'
 import type { JobRecord } from '@/types/job'
 import type { ResumeRecord } from '@/types/resume'
@@ -105,6 +107,10 @@ function statusForMessage(message: string) {
     message === 'The selected resume does not belong to you.'
   ) {
     return 400
+  }
+
+  if (isAiAccessErrorMessage(message)) {
+    return getAiAccessErrorStatus(message)
   }
 
   if (
@@ -388,6 +394,14 @@ export async function POST(request: Request) {
       }
 
       const screening = await findRecruiterScreeningByJobAndResume(user.id, job.id, resume.id)
+      let aiAccessMode: AiAccessMode | null = null
+      const needsFreshAiGeneration = requireAi && (!screening || screening.source !== 'openai')
+
+      if (needsFreshAiGeneration) {
+        const aiAccess = await assertAiAccess(user)
+        aiAccessMode = aiAccess.accessMode
+      }
+
       const aiDraft =
         screening && (!requireAi || screening.source === 'openai')
           ? {
@@ -449,6 +463,10 @@ export async function POST(request: Request) {
         updatedAt: now,
       }))
 
+      if (record.source === 'openai' && aiAccessMode) {
+        await recordAiUsage(user, 'assessment_generation', aiAccessMode)
+      }
+
       return NextResponse.json(record, { status: 201 })
     }
 
@@ -471,6 +489,12 @@ export async function POST(request: Request) {
 
     if (resume && !canUseResumeForApplication(user.id, user.email, resume)) {
       return NextResponse.json({ error: '当前选择的简历不属于你。' }, { status: 403 })
+    }
+
+    let aiAccessMode: AiAccessMode | null = null
+    if (requireAi) {
+      const aiAccess = await assertAiAccess(user)
+      aiAccessMode = aiAccess.accessMode
     }
 
     const aiDraft = await createAssessmentDraft(job, resume, mode, requireAi ? { requireAi: true } : undefined)
@@ -514,6 +538,11 @@ export async function POST(request: Request) {
     }
 
     await addAssessmentRecord(record)
+
+    if (record.source === 'openai' && aiAccessMode) {
+      await recordAiUsage(user, 'assessment_generation', aiAccessMode)
+    }
+
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create assessment.'

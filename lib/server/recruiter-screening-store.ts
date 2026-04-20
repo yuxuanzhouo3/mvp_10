@@ -26,6 +26,15 @@ function sortRecruiterScreenings(records: RecruiterScreeningRecord[]) {
   })
 }
 
+export async function listRecruiterScreenings() {
+  return withCloudBaseFallback(
+    'listRecruiterScreenings',
+    async () =>
+      sortRecruiterScreenings(await listCloudDocuments<RecruiterScreeningRecord>(RECRUITER_SCREENINGS_COLLECTION)),
+    async () => sortRecruiterScreenings(await readRecruiterScreenings())
+  )
+}
+
 export async function listRecruiterScreeningsByRecruiter(recruiterUserId: string) {
   return withCloudBaseFallback(
     'listRecruiterScreeningsByRecruiter',

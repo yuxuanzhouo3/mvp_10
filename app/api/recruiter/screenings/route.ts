@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 
+import { assertAiAccess, getAiAccessErrorStatus, isAiAccessErrorMessage, recordAiUsage } from '@/lib/server/ai-access'
 import { getApplicationById, listApplicationsByJobId, updateApplication } from '@/lib/server/application-store'
 import {
   isAuthErrorMessage,
@@ -14,6 +15,7 @@ import {
   saveRecruiterScreening,
 } from '@/lib/server/recruiter-screening-store'
 import { getResumeRecordById, listResumeRecords } from '@/lib/server/resume-store'
+import type { AiAccessMode } from '@/types/ai'
 import type { AppUser, UserRole } from '@/types/auth'
 import type { JobRecord } from '@/types/job'
 import type { ResumeRecord } from '@/types/resume'
@@ -62,6 +64,10 @@ function statusForMessage(message: string) {
     message === 'Application id is required.'
   ) {
     return 400
+  }
+
+  if (isAiAccessErrorMessage(message)) {
+    return getAiAccessErrorStatus(message)
   }
 
   if (
@@ -225,6 +231,12 @@ export async function POST(request: Request) {
       resumeId: typeof body.resumeId === 'string' && body.resumeId.trim() ? body.resumeId : null,
     })
 
+    let aiAccessMode: AiAccessMode | null = null
+    if (body.requireAi === true) {
+      const aiAccess = await assertAiAccess(user)
+      aiAccessMode = aiAccess.accessMode
+    }
+
     const existing = await findRecruiterScreeningByJobAndResume(user.id, job.id, resume.id)
     const record: RecruiterScreeningRecord = await generateRecruiterScreeningRecord({
       job,
@@ -246,6 +258,10 @@ export async function POST(request: Request) {
         notes: record.summary,
         updatedAt: new Date().toISOString(),
       }))
+    }
+
+    if (record.source === 'openai' && aiAccessMode) {
+      await recordAiUsage(user, 'recruiter_screening', aiAccessMode)
     }
 
     return NextResponse.json(record, { status: existing ? 200 : 201 })

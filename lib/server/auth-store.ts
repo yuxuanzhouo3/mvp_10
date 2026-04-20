@@ -36,6 +36,8 @@ const USERS_COLLECTION = 'auth_users'
 const SESSIONS_COLLECTION = 'auth_sessions'
 const RESET_CODES_COLLECTION = 'auth_reset_codes'
 const REGISTRATION_CODES_COLLECTION = 'auth_registration_codes'
+const DEFAULT_WECHAT_USER_NAME = '微信用户'
+const WECHAT_USER_EMAIL_DOMAIN = 'wx.mornjob.local'
 
 function defaultPreferences(role: UserRole): UserPreferences {
   return {
@@ -47,6 +49,25 @@ function defaultPreferences(role: UserRole): UserPreferences {
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase()
+}
+
+function normalizeWechatOpenId(openId: string) {
+  return openId.trim()
+}
+
+function buildWechatPlaceholderEmail(openId: string) {
+  return `wechat_${normalizeWechatOpenId(openId)}@${WECHAT_USER_EMAIL_DOMAIN}`
+}
+
+function shouldReplaceWechatDisplayName(name: string) {
+  const normalized = name.trim().toLowerCase()
+
+  return (
+    !normalized ||
+    normalized === DEFAULT_WECHAT_USER_NAME.toLowerCase() ||
+    normalized.startsWith('微信用户') ||
+    normalized.startsWith('wechat user')
+  )
 }
 
 function toPublicUser(user: StoredUser): AppUser {
@@ -158,6 +179,12 @@ async function getCloudUserByEmail(email: string) {
   })
 }
 
+async function getCloudUserByWechatOpenId(openId: string) {
+  return findCloudDocument<StoredUser>(USERS_COLLECTION, {
+    where: { wechatOpenId: normalizeWechatOpenId(openId) },
+  })
+}
+
 async function getCloudSessionByToken(token: string) {
   const session = await getCloudDocumentById<AuthSession>(SESSIONS_COLLECTION, token)
 
@@ -249,6 +276,41 @@ export async function getUserById(id: string) {
   )
 }
 
+export async function getUserByWechatOpenId(openId: string) {
+  const normalizedOpenId = normalizeWechatOpenId(openId)
+
+  return withCloudBaseFallback(
+    'getUserByWechatOpenId',
+    async () => getCloudUserByWechatOpenId(normalizedOpenId),
+    async () => {
+      const users = await readUsers()
+      return (
+        users.find(
+          (user) =>
+            user.wechatOpenId === normalizedOpenId ||
+            user.email === buildWechatPlaceholderEmail(normalizedOpenId)
+        ) ?? null
+      )
+    }
+  )
+}
+
+export async function listUsers() {
+  return withCloudBaseFallback(
+    'listUsers',
+    async () => {
+      const users = await listCloudDocuments<StoredUser>(USERS_COLLECTION, {
+        orderBy: { field: 'createdAt', direction: 'desc' },
+      })
+      return users.map(toPublicUser)
+    },
+    async () => {
+      const users = await readUsers()
+      return sortByCreatedAtDescending(users).map(toPublicUser)
+    }
+  )
+}
+
 export async function createUser(input: {
   email: string
   password: string
@@ -263,6 +325,7 @@ export async function createUser(input: {
     id: crypto.randomUUID(),
     email: normalizedEmail,
     name: input.name.trim(),
+    authProvider: 'email',
     role,
     plan: 'free',
     billingStatus: 'inactive',
@@ -290,6 +353,106 @@ export async function createUser(input: {
 
       if (existing) {
         throw new Error('An account with this email already exists.')
+      }
+
+      users.unshift(user)
+      await writeUsers(users)
+      return toPublicUser(user)
+    }
+  )
+}
+
+export async function upsertWechatUser(input: {
+  openId: string
+  unionId?: string | null
+  name?: string | null
+  avatar?: string | null
+}) {
+  const normalizedOpenId = normalizeWechatOpenId(input.openId)
+  const normalizedUnionId = input.unionId?.trim() || null
+  const normalizedName = input.name?.trim() || null
+  const normalizedAvatar = input.avatar?.trim() || null
+  const placeholderEmail = buildWechatPlaceholderEmail(normalizedOpenId)
+
+  const mergeWechatIdentity = (user: StoredUser): StoredUser => ({
+    ...user,
+    authProvider: user.authProvider || 'wechat_mp',
+    wechatOpenId: normalizedOpenId,
+    wechatUnionId: normalizedUnionId || user.wechatUnionId,
+    name:
+      normalizedName && shouldReplaceWechatDisplayName(user.name)
+        ? normalizedName
+        : user.name || normalizedName || DEFAULT_WECHAT_USER_NAME,
+    avatar: normalizedAvatar || user.avatar,
+  })
+
+  return withCloudBaseFallback(
+    'upsertWechatUser',
+    async () => {
+      const existing =
+        (await getCloudUserByWechatOpenId(normalizedOpenId)) ||
+        (await getCloudUserByEmail(placeholderEmail))
+
+      if (existing) {
+        const nextUser = mergeWechatIdentity(existing)
+        await putCloudDocument(USERS_COLLECTION, nextUser.id, nextUser)
+        return toPublicUser(nextUser)
+      }
+
+      const generatedPassword = randomBytes(24).toString('hex')
+      const { passwordHash, passwordSalt } = hashPassword(generatedPassword)
+      const createdAt = new Date().toISOString()
+      const user: StoredUser = {
+        id: crypto.randomUUID(),
+        email: placeholderEmail,
+        name: normalizedName || DEFAULT_WECHAT_USER_NAME,
+        avatar: normalizedAvatar || undefined,
+        authProvider: 'wechat_mp',
+        wechatOpenId: normalizedOpenId,
+        wechatUnionId: normalizedUnionId || undefined,
+        role: 'candidate',
+        plan: 'free',
+        billingStatus: 'inactive',
+        preferences: defaultPreferences('candidate'),
+        createdAt,
+        passwordHash,
+        passwordSalt,
+      }
+
+      await putCloudDocument(USERS_COLLECTION, user.id, user)
+      return toPublicUser(user)
+    },
+    async () => {
+      const users = await readUsers()
+      const existingIndex = users.findIndex(
+        (user) =>
+          user.wechatOpenId === normalizedOpenId || user.email === placeholderEmail
+      )
+
+      if (existingIndex >= 0) {
+        users[existingIndex] = mergeWechatIdentity(users[existingIndex])
+        await writeUsers(users)
+        return toPublicUser(users[existingIndex])
+      }
+
+      const generatedPassword = randomBytes(24).toString('hex')
+      const { passwordHash, passwordSalt } = hashPassword(generatedPassword)
+      const createdAt = new Date().toISOString()
+      const user: StoredUser = {
+        id: crypto.randomUUID(),
+        email: placeholderEmail,
+        name: normalizedName || DEFAULT_WECHAT_USER_NAME,
+        avatar: normalizedAvatar || undefined,
+        authProvider: 'wechat_mp',
+        wechatOpenId: normalizedOpenId,
+        wechatUnionId: normalizedUnionId || undefined,
+        role: 'candidate',
+        plan: 'free',
+        billingStatus: 'inactive',
+        preferences: defaultPreferences('candidate'),
+        createdAt,
+        passwordHash,
+        passwordSalt,
       }
 
       users.unshift(user)
