@@ -6,10 +6,17 @@ import {
   buildDefaultTimeline,
   buildDefaultWorkflow,
 } from '@/lib/server/resume-defaults'
-import { assertAiAccess, getAiAccessErrorStatus, isAiAccessErrorMessage, recordAiUsage } from '@/lib/server/ai-access'
+import {
+  assertAiAccess,
+  getAiAccessErrorStatus,
+  isAiAccessErrorMessage,
+  localizeAiAccessMessage,
+  recordAiUsage,
+} from '@/lib/server/ai-access'
 import { analyzeResumeText, canUseAiResumeAnalysis, extractResumeText } from '@/lib/server/resume-analysis'
 import { addResumeRecord, listResumeRecords, saveResumeFile, toResumeListItem } from '@/lib/server/resume-store'
 import { isAuthErrorMessage, requireAuthenticatedUser } from '@/lib/server/auth-helpers'
+import { resolveRequestLanguage } from '@/lib/server/request-language'
 import type { AppUser } from '@/types/auth'
 import type { AiAccessMode } from '@/types/ai'
 import type { ResumeRecord } from '@/types/resume'
@@ -135,11 +142,15 @@ export async function POST(request: Request) {
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Resume upload failed.'
+    const language = resolveRequestLanguage(request)
     const status = isAuthErrorMessage(message)
       ? 401
       : isAiAccessErrorMessage(message)
         ? getAiAccessErrorStatus(message)
         : 500
-    return NextResponse.json({ error: message }, { status })
+    const localizedMessage = isAiAccessErrorMessage(message)
+      ? localizeAiAccessMessage(message, language)
+      : message
+    return NextResponse.json({ error: localizedMessage }, { status })
   }
 }

@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 
-import { assertAiAccess, getAiAccessErrorStatus, isAiAccessErrorMessage, recordAiUsage } from '@/lib/server/ai-access'
+import {
+  assertAiAccess,
+  getAiAccessErrorStatus,
+  isAiAccessErrorMessage,
+  localizeAiAccessMessage,
+  recordAiUsage,
+} from '@/lib/server/ai-access'
 import { getApplicationById, listApplicationsByJobId, updateApplication } from '@/lib/server/application-store'
 import {
   isAuthErrorMessage,
@@ -14,6 +20,7 @@ import {
   listRecruiterScreeningsByRecruiter,
   saveRecruiterScreening,
 } from '@/lib/server/recruiter-screening-store'
+import { resolveRequestLanguage } from '@/lib/server/request-language'
 import { getResumeRecordById, listResumeRecords } from '@/lib/server/resume-store'
 import type { AiAccessMode } from '@/types/ai'
 import type { AppUser, UserRole } from '@/types/auth'
@@ -210,7 +217,11 @@ export async function GET(request: Request) {
     return NextResponse.json(records)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load recruiter screenings.'
-    return NextResponse.json({ error: localizeError(message) }, { status: statusForMessage(message) })
+    const language = resolveRequestLanguage(request)
+    const localizedMessage = isAiAccessErrorMessage(message)
+      ? localizeAiAccessMessage(message, language)
+      : localizeError(message)
+    return NextResponse.json({ error: localizedMessage }, { status: statusForMessage(message) })
   }
 }
 
@@ -267,6 +278,10 @@ export async function POST(request: Request) {
     return NextResponse.json(record, { status: existing ? 200 : 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create recruiter screening.'
-    return NextResponse.json({ error: localizeError(message) }, { status: statusForMessage(message) })
+    const language = resolveRequestLanguage(request)
+    const localizedMessage = isAiAccessErrorMessage(message)
+      ? localizeAiAccessMessage(message, language)
+      : localizeError(message)
+    return NextResponse.json({ error: localizedMessage }, { status: statusForMessage(message) })
   }
 }

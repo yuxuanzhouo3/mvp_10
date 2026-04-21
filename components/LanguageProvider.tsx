@@ -40,6 +40,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     }
 
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
+    document.cookie = `${LANGUAGE_STORAGE_KEY}=${language}; path=/; max-age=31536000; samesite=lax`
     document.documentElement.lang = language === 'en' ? 'en' : 'zh-CN'
   }, [language])
 

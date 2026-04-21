@@ -1,4 +1,5 @@
 import { addAiUsageRecord, getAiQuotaConfig, getCurrentAiUsageMonth, getEstimatedAiUseCost, listAiUsageRecords } from '@/lib/server/ai-quota-store'
+import type { Language } from '@/lib/i18n'
 import type { AiAccessMode, AiUsageFeature } from '@/types/ai'
 import type { AppUser } from '@/types/auth'
 
@@ -209,4 +210,38 @@ export function getAiAccessErrorStatus(message: string) {
   }
 
   return 403
+}
+
+export function localizeAiAccessMessage(message: string, language: Language) {
+  if (message.startsWith('AI generation is currently disabled by the administrator.')) {
+    return language === 'en'
+      ? 'AI generation is currently disabled by the administrator.'
+      : 'AI 生成功能当前已被管理员禁用。'
+  }
+
+  if (message.startsWith('The monthly AI user capacity has been reached.')) {
+    return language === 'en'
+      ? 'The monthly AI user capacity has been reached. Please contact the administrator.'
+      : '本月可使用 AI 的用户数已达到上限，请联系管理员。'
+  }
+
+  if (message.startsWith('Free AI trials have been used up.')) {
+    return language === 'en'
+      ? 'Your free usage limit has been reached. You can upgrade your membership to get more usage.'
+      : '您的免费次数已经到达上限，您可以进行升级会员来获得次数。'
+  }
+
+  if (message.startsWith('This account has reached its AI budget for the current month.')) {
+    return language === 'en'
+      ? 'This account has reached its AI budget for the current month.'
+      : '当前账号本月的 AI 额度已达到上限。'
+  }
+
+  if (message.startsWith('The platform AI budget for this month has been exhausted.')) {
+    return language === 'en'
+      ? 'The platform AI budget for this month has been exhausted.'
+      : '平台本月的 AI 额度已用完。'
+  }
+
+  return message
 }

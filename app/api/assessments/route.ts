@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 
-import { assertAiAccess, getAiAccessErrorStatus, isAiAccessErrorMessage, recordAiUsage } from '@/lib/server/ai-access'
+import {
+  assertAiAccess,
+  getAiAccessErrorStatus,
+  isAiAccessErrorMessage,
+  localizeAiAccessMessage,
+  recordAiUsage,
+} from '@/lib/server/ai-access'
 import { getApplicationById, updateApplication } from '@/lib/server/application-store'
 import {
   isAuthErrorMessage,
@@ -11,6 +17,7 @@ import { createAssessmentDraft } from '@/lib/server/assessment-engine'
 import { addAssessmentRecord, listAssessmentRecords } from '@/lib/server/assessment-store'
 import { findRecruiterScreeningByJobAndResume } from '@/lib/server/recruiter-screening-store'
 import { getJobById } from '@/lib/server/job-store'
+import { resolveRequestLanguage } from '@/lib/server/request-language'
 import { getResumeRecordById, listResumeRecords } from '@/lib/server/resume-store'
 import type {
   AssessmentAnswer,
@@ -337,7 +344,11 @@ export async function GET(request: Request) {
     return NextResponse.json(records)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load assessments.'
-    return NextResponse.json({ error: localizeAssessmentError(message) }, { status: statusForMessage(message) })
+    const language = resolveRequestLanguage(request)
+    const localizedMessage = isAiAccessErrorMessage(message)
+      ? localizeAiAccessMessage(message, language)
+      : localizeAssessmentError(message)
+    return NextResponse.json({ error: localizedMessage }, { status: statusForMessage(message) })
   }
 }
 
@@ -546,6 +557,10 @@ export async function POST(request: Request) {
     return NextResponse.json(record, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create assessment.'
-    return NextResponse.json({ error: localizeAssessmentError(message) }, { status: statusForMessage(message) })
+    const language = resolveRequestLanguage(request)
+    const localizedMessage = isAiAccessErrorMessage(message)
+      ? localizeAiAccessMessage(message, language)
+      : localizeAssessmentError(message)
+    return NextResponse.json({ error: localizedMessage }, { status: statusForMessage(message) })
   }
 }
