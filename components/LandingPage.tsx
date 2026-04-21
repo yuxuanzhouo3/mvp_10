@@ -19,7 +19,7 @@ export function LandingPage() {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
             <Briefcase className="w-4 h-4 text-white" />
           </div>
-          <span className="font-bold text-lg">鲁臣招聘</span>
+          <span className="font-bold text-lg">mornjob招聘</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm text-gray-600">
           <a href="#" className="hover:text-gray-900 transition-colors">职位广场</a>
@@ -46,7 +46,7 @@ export function LandingPage() {
           全靠 AI 一站搞定
         </h1>
         <p className="text-gray-500 text-lg max-w-xl mb-10 leading-relaxed">
-          鲁臣招聘是面向求职者与招聘方的 AI 招聘操作系统。从简历优化到 AI 面试模拟，从岗位发布到智能初筛，一个平台全覆盖。
+          mornjob招聘是面向求职者与招聘方的 AI 招聘操作系统。从简历优化到 AI 面试模拟，从岗位发布到智能初筛，一个平台全覆盖。
         </p>
         <div className="flex items-center gap-4">
           <button
@@ -103,7 +103,7 @@ export function LandingPage() {
       {/* CTA */}
       <section className="py-24 px-6 text-center">
         <h2 className="text-4xl font-black mb-4">准备好了吗？</h2>
-        <p className="text-gray-500 mb-8">加入数千名已经在使用鲁臣招聘的求职者和招聘方</p>
+        <p className="text-gray-500 mb-8">加入数千名已经在使用mornjob招聘的求职者和招聘方</p>
         <button
           onClick={() => setShowLogin(true)}
           className="flex items-center gap-2 px-8 py-4 rounded-full bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors mx-auto"
@@ -114,7 +114,7 @@ export function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-100 py-8 px-8 text-center text-sm text-gray-400">
-        © 2025 鲁臣招聘. All rights reserved.
+        © 2025 mornjob招聘. All rights reserved.
       </footer>
     </div>
   )
