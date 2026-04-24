@@ -233,8 +233,8 @@ export function localizeAiAccessMessage(message: string, language: Language) {
 
   if (message.startsWith('This account has reached its AI budget for the current month.')) {
     return language === 'en'
-      ? 'This account has reached its AI budget for the current month.'
-      : '当前账号本月的 AI 额度已达到上限。'
+      ? 'This account has reached its monthly AI quota. Please upgrade in Settings > Billing before using it again.'
+      : '账号本月AI额度已达上线，请到设置的Billing进行升级，再进行使用。'
   }
 
   if (message.startsWith('The platform AI budget for this month has been exhausted.')) {
